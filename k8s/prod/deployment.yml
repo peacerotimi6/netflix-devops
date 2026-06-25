@@ -6,42 +6,48 @@ metadata:
   labels:
     app: netflix-web
     environment: prod
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp dirs; readOnlyRootFilesystem disabled for web container"
+
 spec:
   replicas: 3
   progressDeadlineSeconds: 900
+
   selector:
     matchLabels:
       app: netflix-web
+
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+
   template:
     metadata:
       labels:
         app: netflix-web
         environment: prod
+
     spec:
       automountServiceAccountToken: false
+
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         seccompProfile:
           type: RuntimeDefault
+
       containers:
         - name: netflix-web
-          image: __ACR_LOGIN_SERVER__/netflix-app:__IMAGE_TAG__
+          image: netflixappdevacr.azurecr.io/netflix-app:v2
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8080
-              protocol: TCP
+
           envFrom:
             - configMapRef:
                 name: netflix-app-config
+
           resources:
             requests:
               cpu: "200m"
@@ -49,6 +55,7 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -57,112 +64,17 @@ spec:
             capabilities:
               drop:
                 - ALL
+
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+          readinessProbe:
+            httpGet:
+              path: /
               port: 8080
             initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
-      restartPolicy: Always
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          nodeTaintsPolicy: Honor
-          labelSelector:
-            matchLabels:
-              app: netflix-web
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netflix-api
-  namespace: netflix-prod
-  labels:
-    app: netflix-api
-    environment: prod
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_35=Secrets injected as env vars via secretRef; migrating to volume mounts is a future improvement"
-    checkov.io/skip3: "CKV_K8S_22=SentenceTransformer writes model cache to disk at startup; readOnlyRootFilesystem cannot be enabled for this container"
-spec:
-  replicas: 2
-  progressDeadlineSeconds: 900
-  selector:
-    matchLabels:
-      app: netflix-api
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  template:
-    metadata:
-      labels:
-        app: netflix-api
-        environment: prod
-    spec:
-      automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: netflix-api
-          image: __ACR_LOGIN_SERVER__/netflix-api:__IMAGE_TAG__
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
-              protocol: TCP
-          envFrom:
-            - secretRef:
-                name: netflix-app-secrets
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "1Gi"
-            limits:
-              cpu: "1000m"
-              memory: "2Gi"
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 10001
-            capabilities:
-              drop:
-                - ALL
-          startupProbe:
-            httpGet:
-              path: /
-              port: 8080
-            failureThreshold: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3

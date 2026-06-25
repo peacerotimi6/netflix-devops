@@ -1,62 +1,28 @@
-# ============================================
-# Stage 1: Build the React application
-# ============================================
 FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Copy dependency files first for better caching
 COPY package.json package-lock.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --production=false
-
-# Copy application source code
 COPY . .
 
-# Build arguments (injected at build time)
 ARG VITE_APP_TMDB_V3_API_KEY
 ARG VITE_APP_API_ENDPOINT_URL=https://api.themoviedb.org/3
-ENV VITE_APP_TMDB_V3_API_KEY=${VITE_APP_TMDB_V3_API_KEY}
-ENV VITE_APP_API_ENDPOINT_URL=${VITE_APP_API_ENDPOINT_URL}
 
-# Build the production bundle
+ENV VITE_APP_TMDB_V3_API_KEY=$VITE_APP_TMDB_V3_API_KEY
+ENV VITE_APP_API_ENDPOINT_URL=$VITE_APP_API_ENDPOINT_URL
+
 RUN npm run build
 
-# ============================================
-# Stage 2: Serve with Nginx
-# ============================================
-FROM nginx:1.27-alpine3.20 AS production
 
-# Upgrade all packages to pick up any remaining security patches
-RUN apk upgrade --no-cache
+FROM nginx:1.27-alpine3.20
 
-# Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy custom nginx configuration
-COPY nginx.conf /etc/nginx/conf.d/
-
-# Copy built assets from build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Add non-root user for security (UID 10001 matches K8s runAsUser)
-RUN addgroup -g 10001 -S appgroup && \
-    adduser -u 10001 -S appuser -G appgroup && \
-    chown -R appuser:appgroup /usr/share/nginx/html && \
-    chown -R appuser:appgroup /var/cache/nginx && \
-    chown -R appuser:appgroup /var/log/nginx && \
-    touch /var/run/nginx.pid && \
-    chown -R appuser:appgroup /var/run/nginx.pid
-
-# Expose port 8080 (non-root user cannot bind to port 80)
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
-
-# Run as non-root user
-USER appuser
 
 CMD ["nginx", "-g", "daemon off;"]

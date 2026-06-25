@@ -1,0 +1,223 @@
+# Netflix Clone App
+
+A Netflix-like streaming web application built with React, TypeScript, and Vite. This app uses The Movie Database (TMDB) API to fetch and display movie data.
+
+## 🎬 Features
+
+- Browse popular, top-rated, now playing, and upcoming movies
+- Search for movies
+- View movie details with trailers
+- Responsive design with Material-UI
+- Smooth animations with Framer Motion
+
+## 📋 Prerequisites
+
+Before running the app, make sure you have the following installed:
+
+- [Node.js](https://nodejs.org/) (v16 or higher)
+- [npm](https://www.npmjs.com/) or [Yarn](https://yarnpkg.com/)
+- [Docker](https://www.docker.com/) (for containerization)
+
+## 🔑 API Key Setup
+
+This app requires a TMDB API key to fetch movie data.
+
+### Getting a TMDB API Key
+
+1. Create a free account at [The Movie Database (TMDB)](https://www.themoviedb.org/)
+2. Go to **Settings** → **API** → **Request an API Key**
+3. Choose "Developer" and fill out the form
+4. Copy your **API Key (v3 auth)**
+
+### Configuring the API Key
+
+Create a `.env` file in the `app/` directory with the following content:
+
+```env
+VITE_APP_TMDB_V3_API_KEY=your_api_key_here
+VITE_APP_API_ENDPOINT_URL=https://api.themoviedb.org/3
+```
+
+Replace `your_api_key_here` with your actual TMDB API key.
+
+## 🚀 Running the App Locally
+
+### 1. Install Dependencies
+
+```bash
+cd app
+npm install
+# or
+yarn install
+```
+
+### 2. Start the Development Server
+
+```bash
+npm run dev
+# or
+yarn dev
+```
+
+The app will be available at `http://localhost:5173/`
+
+### 3. Build for Production
+
+```bash
+npm run build
+# or
+yarn build
+```
+
+### 4. Preview Production Build
+
+```bash
+npm run preview
+# or
+yarn preview
+```
+
+## 🐳 Docker
+
+### Building the Docker Image
+
+From the **project root directory** (not the app folder), run:
+
+```bash
+# Build with API key as build argument
+docker build --build-arg VITE_APP_TMDB_V3_API_KEY=your_api_key_here -t netflix-clone .
+
+# Or with custom API endpoint
+docker build \
+  --build-arg VITE_APP_TMDB_V3_API_KEY=your_api_key_here \
+  --build-arg VITE_APP_API_ENDPOINT_URL=https://api.themoviedb.org/3 \
+  -t netflix-clone .
+```
+
+### Running the Docker Container
+
+```bash
+# Run the container
+docker run -d --name netflix-app -p 8080:80 netflix-clone
+
+# The app will be available at http://localhost:8080
+```
+
+### Docker Commands Reference
+
+```bash
+# List running containers
+docker ps
+
+# Stop the container
+docker stop netflix-app
+
+# Start the container again
+docker start netflix-app
+
+# Remove the container
+docker rm netflix-app
+
+# Remove the image
+docker rmi netflix-clone
+
+# View container logs
+docker logs netflix-app
+
+# Enter the container shell
+docker exec -it netflix-app sh
+```
+
+### Pushing to Azure Container Registry (ACR)
+
+```bash
+# Login to ACR
+az acr login --name <your-acr-name>
+
+# Tag the image
+docker tag netflix-clone <your-acr-name>.azurecr.io/netflix-clone:latest
+
+# Push to ACR
+docker push <your-acr-name>.azurecr.io/netflix-clone:latest
+```d
+
+## 📁 Project Structure
+
+```
+app/
+├── public/              # Static assets
+│   ├── assets/          # Images and icons
+│   └── index.html       # HTML template
+├── src/
+│   ├── components/      # Reusable React components
+│   ├── constant/        # App constants and config
+│   ├── hooks/           # Custom React hooks
+│   ├── layouts/         # Layout components
+│   ├── pages/           # Page components
+│   ├── providers/       # Context providers
+│   ├── routes/          # Route definitions
+│   ├── store/           # Redux store and slices
+│   ├── theme/           # MUI theme customization
+│   ├── types/           # TypeScript type definitions
+│   ├── utils/           # Utility functions
+│   └── main.tsx         # App entry point
+├── .env                 # Environment variables (create this)
+├── .env.example         # Environment variables template
+├── package.json         # Dependencies and scripts
+├── tsconfig.json        # TypeScript configuration
+├── vite.config.ts       # Vite configuration
+└── README.md            # This file
+```
+
+## 🛠️ Tech Stack
+
+- **React 18** - UI library
+- **TypeScript** - Type safety
+- **Vite** - Build tool and dev server
+- **Material-UI (MUI)** - Component library
+- **Redux Toolkit** - State management
+- **RTK Query** - API data fetching
+- **Framer Motion** - Animations
+- **React Router** - Client-side routing
+- **Video.js** - Video player
+
+## 🔧 Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_APP_TMDB_V3_API_KEY` | Your TMDB API key (v3) | Yes |
+| `VITE_APP_API_ENDPOINT_URL` | TMDB API base URL | Yes |
+
+## 📝 Scripts
+
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**1. Movies not loading**
+- Check that your `.env` file exists and has the correct API key
+- Verify the API key is valid at [TMDB](https://www.themoviedb.org/)
+- Restart the dev server after changing `.env`
+
+**2. Docker build fails**
+- Ensure you're running the build from the project root (where Dockerfile is)
+- Check that the API key build argument is provided
+
+**3. Port already in use**
+- Vite will automatically try the next available port
+- Or stop the process using the port: `npx kill-port 5173`
+
+## 📄 License
+
+This project is for educational purposes only.
+
+## 🙏 Acknowledgments
+
+- [The Movie Database (TMDB)](https://www.themoviedb.org/) for the movie data API
+- Netflix for the UI/UX inspiration

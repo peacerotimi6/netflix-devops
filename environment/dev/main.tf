@@ -14,7 +14,7 @@ terraform {
     resource_group_name  = "terraform-state-rg"
     storage_account_name = "tfstatenetflixdev"
     container_name       = "tfstate"
-    key                  = "dev.terraform.tfstate"
+    key                  = "dev-v2.terraform.tfstate"
     # Use managed identity for state access instead of storage keys
     use_azuread_auth = true
   }

@@ -1,94 +1,3 @@
-# ============================================================
-# Green slot — production
-# Deploy here when green is inactive; switch traffic when ready.
-# ============================================================
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netflix-web-green
-  namespace: netflix-prod
-  labels:
-    app: netflix-web
-    slot: green
-    environment: prod
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp dirs; readOnlyRootFilesystem disabled for web container"
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: netflix-web
-      slot: green
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  template:
-    metadata:
-      labels:
-        app: netflix-web
-        slot: green
-        environment: prod
-    spec:
-      automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: netflix-web
-          image: __ACR_LOGIN_SERVER__/netflix-app:__IMAGE_TAG__
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
-              protocol: TCP
-          envFrom:
-            - configMapRef:
-                name: netflix-app-config
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 10001
-            capabilities:
-              drop:
-                - ALL
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
-      restartPolicy: Always
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: netflix-web
-              slot: green
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -98,22 +7,12 @@ metadata:
     app: netflix-api
     slot: green
     environment: prod
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_35=Secrets injected as env vars via secretRef; migrating to volume mounts is a future improvement"
-    checkov.io/skip3: "CKV_K8S_22=SentenceTransformer writes model cache to disk at startup; readOnlyRootFilesystem cannot be enabled for this container"
 spec:
   replicas: 2
-  progressDeadlineSeconds: 900
   selector:
     matchLabels:
       app: netflix-api
       slot: green
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -123,55 +22,28 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        seccompProfile:
-          type: RuntimeDefault
+        runAsUser: 1000
+        runAsNonRoot: false
       containers:
         - name: netflix-api
-          image: __ACR_LOGIN_SERVER__/netflix-api:__IMAGE_TAG__
-          imagePullPolicy: Always
+          image: netflixappdevacr.azurecr.io/netflix-api:v3
           ports:
             - containerPort: 8080
-              protocol: TCP
+
+          env:
+            - name: HF_HOME
+              value: /tmp/hf
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/hf
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
           envFrom:
             - secretRef:
                 name: netflix-app-secrets
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "1Gi"
-            limits:
-              cpu: "1000m"
-              memory: "2Gi"
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 10001
-            capabilities:
-              drop:
-                - ALL
-          startupProbe:
-            httpGet:
-              path: /
-              port: 8080
-            failureThreshold: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -6,41 +6,32 @@ metadata:
   labels:
     app: netflix-web
     environment: dev
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp dirs; readOnlyRootFilesystem disabled for web container"
+
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: netflix-web
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+
   template:
     metadata:
       labels:
         app: netflix-web
         environment: dev
+
     spec:
-      automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        seccompProfile:
-          type: RuntimeDefault
       containers:
         - name: netflix-web
-          image: __ACR_LOGIN_SERVER__/netflix-app:__IMAGE_TAG__
+          image: netflixappdevacr.azurecr.io/netflix-app:v2   # ✅ FIXED (AMD64 working build)
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8080
-              protocol: TCP
+
           envFrom:
             - configMapRef:
                 name: netflix-app-config
+
           resources:
             requests:
               cpu: "100m"
@@ -48,31 +39,20 @@ spec:
             limits:
               cpu: "250m"
               memory: "256Mi"
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 10001
-            capabilities:
-              drop:
-                - ALL
+
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
-      restartPolicy: Always
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -82,38 +62,52 @@ metadata:
   labels:
     app: netflix-api
     environment: dev
-  annotations:
-    checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
-    checkov.io/skip2: "CKV_K8S_35=Secrets injected as env vars via secretRef; migrating to volume mounts is a future improvement"
-    checkov.io/skip3: "CKV_K8S_22=SentenceTransformer writes model cache to disk at startup; readOnlyRootFilesystem cannot be enabled for this container"
+
 spec:
   replicas: 1
   progressDeadlineSeconds: 900
+
   selector:
     matchLabels:
       app: netflix-api
+
   template:
     metadata:
       labels:
         app: netflix-api
         environment: dev
+
     spec:
       automountServiceAccountToken: false
+
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         seccompProfile:
           type: RuntimeDefault
+
       containers:
         - name: netflix-api
-          image: __ACR_LOGIN_SERVER__/netflix-api:__IMAGE_TAG__
+          image: netflixappdevacr.azurecr.io/netflix-api:v3
           imagePullPolicy: Always
+
           ports:
             - containerPort: 8080
-              protocol: TCP
+
           envFrom:
             - secretRef:
                 name: netflix-app-secrets
+
+          env:
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/huggingface
+
+          volumeMounts:
+            - name: tmp-storage
+              mountPath: /tmp
+
           resources:
             requests:
               cpu: "200m"
@@ -121,36 +115,7 @@ spec:
             limits:
               cpu: "1000m"
               memory: "2Gi"
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            runAsNonRoot: true
-            runAsUser: 10001
-            capabilities:
-              drop:
-                - ALL
-          # startupProbe absorbs slow ML model loading (up to 5 min);
-          # liveness/readiness only activate once startup succeeds.
-          startupProbe:
-            httpGet:
-              path: /
-              port: 8080
-            failureThreshold: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+
+      volumes:
+        - name: tmp-storage
+          emptyDir: {}

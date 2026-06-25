@@ -10,7 +10,7 @@ variable "location" {
 }
 
 variable "acr_name" {
-  description = "Name of the Azure Container Registry"
+  description = "Name of the Azure Container Raegistry"
   type        = string
 }
 

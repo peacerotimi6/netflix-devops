@@ -38,7 +38,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     max_pods                    = 50
     zones                       = ["1"]
     vnet_subnet_id              = var.system_subnet_id
-    host_encryption_enabled     = true
+    host_encryption_enabled     = false
     only_critical_addons_enabled = true
     node_labels = {
       "role" = "system"
@@ -84,7 +84,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
   zones                       = ["1"]
   vnet_subnet_id              = var.app_subnet_id
   os_disk_size_gb             = var.os_disk_size_gb
-  host_encryption_enabled     = true
+  host_encryption_enabled     = false
   node_labels = {
     "role" = "app"
   }
