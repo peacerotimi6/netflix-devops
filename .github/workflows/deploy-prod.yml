@@ -17,8 +17,6 @@ env:
   AKS_CLUSTER_NAME: netflix-app-prod-aks
   AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
   NAMESPACE: netflix-prod
-  FRONTEND_IMAGE: netflix-app
-  API_IMAGE: netflix-api
 
 permissions:
   id-token: write
@@ -58,11 +56,11 @@ jobs:
             --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Deploy Kubernetes manifests
+      - name: Deploy to GREEN environment only
         run: |
           IMAGE_TAG=${{ inputs.image_tag }}
 
-          echo "🚀 Deploying tag: $IMAGE_TAG"
+          echo "🚀 Deploying GREEN slot with tag: $IMAGE_TAG"
 
           sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
               -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
@@ -73,7 +71,7 @@ jobs:
           kubectl apply -f k8s/prod/hpa.yml
           kubectl apply -f k8s/prod/pdb.yml
 
-      - name: Rollout status (GREEN deployments)
+      - name: Rollout status (GREEN ONLY)
         run: |
           kubectl rollout status deployment/netflix-web-green -n $NAMESPACE --timeout=600s
           kubectl rollout status deployment/netflix-api-green -n $NAMESPACE --timeout=600s
@@ -82,4 +80,3 @@ jobs:
         run: |
           kubectl get pods -n $NAMESPACE
           kubectl get svc -n $NAMESPACE
-#
