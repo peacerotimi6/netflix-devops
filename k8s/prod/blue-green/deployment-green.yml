@@ -26,7 +26,7 @@ spec:
         runAsNonRoot: false
       containers:
         - name: netflix-api
-          image: netflixappdevacr.azurecr.io/netflix-api:v3
+          image: netflixappprodacr.azurecr.io/netflix-api:v3
           ports:
             - containerPort: 8080
 
@@ -36,13 +36,73 @@ spec:
             - name: TRANSFORMERS_CACHE
               value: /tmp/hf
 
+          envFrom:
+            - secretRef:
+                name: netflix-app-secrets
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
           volumeMounts:
             - name: tmp
               mountPath: /tmp
 
-          envFrom:
-            - secretRef:
-                name: netflix-app-secrets
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflix-web-green
+  namespace: netflix-prod
+  labels:
+    app: netflix-web
+    slot: green
+    environment: prod
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netflix-web
+      slot: green
+  template:
+    metadata:
+      labels:
+        app: netflix-web
+        slot: green
+        environment: prod
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: false
+      containers:
+        - name: netflix-web
+          image: netflixappprodacr.azurecr.io/netflix-app:v3
+          ports:
+            - containerPort: 80
+
+          env:
+            - name: VITE_API_URL
+              value: "https://api.netflix.com"
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
 
       volumes:
         - name: tmp

@@ -157,4 +157,3 @@ jobs:
         run: |
           kubectl get svc -n $NAMESPACE
           kubectl get pods -n $NAMESPACE -o wide
-#
