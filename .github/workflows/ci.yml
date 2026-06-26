@@ -51,4 +51,3 @@ jobs:
 
       - name: Output image tag
         run: echo "IMAGE_TAG=$IMAGE_TAG"
-#
