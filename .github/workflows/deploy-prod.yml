@@ -16,7 +16,7 @@ env:
   ACR_NAME: netflixappprodacr
   ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
   AKS_CLUSTER_NAME: netflix-app-prod-aks
-  AKS_RESOURCE_GROUP: netflix-app-prod-rg
+  AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
   NAMESPACE: netflix-prod
   FRONTEND_IMAGE: netflix-app
   API_IMAGE: netflix-api
