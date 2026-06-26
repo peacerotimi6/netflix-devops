@@ -2,7 +2,7 @@ name: CI - Build and Push Images
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
 
 env:
   ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
@@ -51,4 +51,3 @@ jobs:
 
       - name: Output image tag
         run: echo "IMAGE_TAG=$IMAGE_TAG"
-#
