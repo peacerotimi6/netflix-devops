@@ -4,16 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (must exist in prod ACR e.g. a1b2c3d)"
+        description: "Image tag (must exist in ACR e.g. fc28d7d or latest)"
         required: true
         type: string
       confirm_deploy:
-        description: "Type 'deploy-prod' to confirm production deployment"
+        description: "Type deploy-prod to confirm"
         required: true
         type: string
 
 env:
-  ACR_NAME: netflixappprodacr
   ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
   AKS_CLUSTER_NAME: netflix-app-prod-aks
   AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
@@ -27,103 +26,59 @@ permissions:
 
 jobs:
 
-# -------------------------------------------------------
-# 1. VALIDATE INPUT
-# -------------------------------------------------------
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Validate confirmation
+      - name: Validate input
         run: |
           if [ "${{ github.event.inputs.confirm_deploy }}" != "deploy-prod" ]; then
-            echo "❌ ERROR: You must type deploy-prod"
+            echo "❌ Type deploy-prod to proceed"
             exit 1
           fi
 
-# -------------------------------------------------------
-# 2. DEPLOY
-# -------------------------------------------------------
-  deploy-prod:
+  deploy:
     runs-on: ubuntu-latest
     needs: validate
-    environment: production
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------------- AZURE LOGIN ----------------
-      - name: Azure Login (OIDC)
+      - name: Azure Login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # ---------------- AKS LOGIN ----------------
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --resource-group $AKS_RESOURCE_GROUP \
+            --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      # ---------------- ENSURE NAMESPACE ----------------
-      - name: Create namespace
-        run: |
-          kubectl create namespace ${{ env.NAMESPACE }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      # ---------------- CREATE SECRET (FIXED) ----------------
-      - name: Create Kubernetes Secret
-        run: |
-          kubectl create secret generic netflix-app-secrets \
-            -n ${{ env.NAMESPACE }} \
-            --from-literal=TMDB_API_KEY=${{ secrets.TMDB_API_KEY }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      # ---------------- DEPLOY FRONTEND ----------------
-      - name: Deploy Web App
+      - name: Deploy Kubernetes manifests
         run: |
           IMAGE_TAG=${{ inputs.image_tag }}
 
-          echo "Deploying frontend: $IMAGE_TAG"
+          echo "🚀 Deploying tag: $IMAGE_TAG"
 
-          sed -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
+          sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
               -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
-              k8s/prod/web-deployment.yml | kubectl apply -f -
+              k8s/prod/deployment.yml | kubectl apply -f -
 
-      # ---------------- DEPLOY API ----------------
-      - name: Deploy API
+          kubectl apply -f k8s/prod/service.yml
+          kubectl apply -f k8s/prod/ingress.yml
+          kubectl apply -f k8s/prod/hpa.yml
+          kubectl apply -f k8s/prod/pdb.yml
+
+      - name: Rollout status (GREEN deployments)
         run: |
-          IMAGE_TAG=${{ inputs.image_tag }}
+          kubectl rollout status deployment/netflix-web-green -n $NAMESPACE --timeout=600s
+          kubectl rollout status deployment/netflix-api-green -n $NAMESPACE --timeout=600s
 
-          echo "Deploying API: $IMAGE_TAG"
-
-          sed -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
-              -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
-              k8s/prod/api-deployment.yml | kubectl apply -f -
-
-      # ---------------- APPLY SERVICES ----------------
-      - name: Apply Service & Ingress
+      - name: Verify
         run: |
-          kubectl apply -f k8s/prod/service.yml -n ${{ env.NAMESPACE }}
-          kubectl apply -f k8s/prod/ingress.yml -n ${{ env.NAMESPACE }}
-
-      # ---------------- ROLLOUT CHECK (FIXED NAMES) ----------------
-      - name: Wait for rollout
-        run: |
-          kubectl rollout status deployment/netflix-web-green -n ${{ env.NAMESPACE }} --timeout=600s
-          kubectl rollout status deployment/netflix-api-green -n ${{ env.NAMESPACE }} --timeout=600s
-
-      # ---------------- VERIFY ----------------
-      - name: Verify deployment
-        run: |
-          echo "=== PODS ==="
-          kubectl get pods -n ${{ env.NAMESPACE }}
-
-          echo "=== SERVICES ==="
-          kubectl get svc -n ${{ env.NAMESPACE }}
-
-          echo "=== INGRESS ==="
-          kubectl get ingress -n ${{ env.NAMESPACE }}
+          kubectl get pods -n $NAMESPACE
+          kubectl get svc -n $NAMESPACE
