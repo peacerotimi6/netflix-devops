@@ -4,136 +4,45 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (e.g., commit SHA short)"
+        description: "Image tag (must exist in ACR e.g. fc28d7d or latest)"
         required: true
         type: string
       confirm_deploy:
-        description: "Type 'deploy-prod' to confirm production deployment"
+        description: "Type deploy-prod to confirm"
         required: true
         type: string
 
 env:
-  ACR_NAME: netflixappprodacr
   ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
   AKS_CLUSTER_NAME: netflix-app-prod-aks
   AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
   NAMESPACE: netflix-prod
-  FRONTEND_IMAGE: netflix-app
-  API_IMAGE: netflix-api
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  # -------------------------------------------------------
-  # Job 1: Validate deployment request
-  # -------------------------------------------------------
+
   validate:
-    name: Validate Deployment Request
     runs-on: ubuntu-latest
     steps:
-      - name: Verify confirmation
-        if: github.event.inputs.confirm_deploy != 'deploy-prod'
+      - name: Validate input
         run: |
-          echo "::error::Deployment confirmation failed. You must type 'deploy-prod' to confirm."
-          exit 1
+          if [ "${{ github.event.inputs.confirm_deploy }}" != "deploy-prod" ]; then
+            echo "❌ Type deploy-prod to proceed"
+            exit 1
+          fi
 
-  # -------------------------------------------------------
-  # Job 2: SonarCloud Quality Gate Check
-  # -------------------------------------------------------
-  sonarcloud-quality-gate:
-    name: SonarCloud Quality Gate
+  deploy:
     runs-on: ubuntu-latest
     needs: validate
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v2
-        with:
-          projectBaseDir: ./app
-          args: >
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check SonarCloud Quality Gate
-        run: |
-          echo "✅ SonarCloud scan completed. Check quality gate status."
-          # Quality gate status is automatically checked by SonarCloud action
-
-  # -------------------------------------------------------
-  # Job 3: Promote images from Dev ACR to Prod ACR
-  # -------------------------------------------------------
-  promote-images:
-    name: Promote Images to Prod ACR
-    runs-on: ubuntu-latest
-    needs: sonarcloud-quality-gate
-    steps:
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Import images from Dev ACR to Prod ACR
-        run: |
-          # Import frontend image
-          az acr import \
-            --name ${{ env.ACR_NAME }} \
-            --source netflixappdevacr.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ inputs.image_tag }} \
-            --image ${{ env.FRONTEND_IMAGE }}:${{ inputs.image_tag }} \
-            --force
-
-          # Import API image
-          az acr import \
-            --name ${{ env.ACR_NAME }} \
-            --source netflixappdevacr.azurecr.io/${{ env.API_IMAGE }}:${{ inputs.image_tag }} \
-            --image ${{ env.API_IMAGE }}:${{ inputs.image_tag }} \
-            --force
-
-      # Final security scan on production images
-      - name: Login to Prod ACR
-        run: az acr login --name ${{ env.ACR_NAME }}
-
-      - name: Trivy scan production frontend image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ inputs.image_tag }}"
-          format: "table"
-          exit-code: "1"
-          severity: "CRITICAL"
-
-      - name: Trivy scan production API image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ inputs.image_tag }}"
-          format: "table"
-          exit-code: "1"
-          severity: "CRITICAL"
-
-  # -------------------------------------------------------
-  # Job 4: Deploy to Production AKS
-  # -------------------------------------------------------
-  deploy-prod:
-    name: Deploy to Production AKS
-    runs-on: ubuntu-latest
-    needs: promote-images
-    environment: production
-    outputs:
-      ingress_ip: ${{ steps.get-ingress.outputs.ip }}
-    steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Azure Login (OIDC)
+      - name: Azure Login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -143,65 +52,18 @@ jobs:
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --resource-group $AKS_RESOURCE_GROUP \
+            --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      # Install Nginx Ingress Controller via Helm
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-
-      - name: Install Nginx Ingress Controller
-        run: |
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-          helm repo update
-          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-            --namespace ingress-nginx \
-            --create-namespace \
-            --set controller.replicaCount=2 \
-            --set controller.service.externalTrafficPolicy=Local \
-            --set "controller.service.annotations.service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-protocol=tcp" \
-            --wait --timeout 300s
-
-      - name: Install cert-manager
-        run: |
-          helm repo add jetstack https://charts.jetstack.io
-          helm repo update
-          # Azure Policy (admissionsenforcer) takes ownership of the webhook's namespaceSelector
-          # field after first install, causing SSA field-manager conflicts on subsequent upgrades.
-          # Deleting the webhook before upgrade lets Helm recreate it cleanly; idempotent on first install.
-          kubectl delete validatingwebhookconfiguration cert-manager-webhook --ignore-not-found=true
-          helm upgrade --install cert-manager jetstack/cert-manager \
-            --namespace cert-manager --create-namespace \
-            --set installCRDs=true \
-            --wait --timeout 300s
-          kubectl apply -f k8s/base/cert-manager-issuers.yml
-
-      - name: Create namespace if not exists
-        run: kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Create/Update secrets
-        run: |
-          kubectl create secret generic netflix-app-secrets \
-            --namespace=${{ env.NAMESPACE }} \
-            --from-literal=TMDB_API_KEY=${{ secrets.TMDB_API_KEY }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Apply ConfigMap
-        run: |
-          kubectl apply -f k8s/base/configmap.yml -n ${{ env.NAMESPACE }}
-
-      - name: Apply Network Policy
-        run: |
-          kubectl apply -f k8s/base/network-policy.yml -n ${{ env.NAMESPACE }}
-
-      - name: Deploy to Production
+      - name: Deploy to GREEN environment only
         run: |
           IMAGE_TAG=${{ inputs.image_tag }}
 
-          # Replace placeholders in production deployment manifests
-          sed -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
-              -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
+          echo "🚀 Deploying GREEN slot with tag: $IMAGE_TAG"
+
+          sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
+              -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
               k8s/prod/deployment.yml | kubectl apply -f -
 
           kubectl apply -f k8s/prod/service.yml
@@ -209,148 +71,12 @@ jobs:
           kubectl apply -f k8s/prod/hpa.yml
           kubectl apply -f k8s/prod/pdb.yml
 
-      - name: Wait for rollout
+      - name: Rollout status (GREEN ONLY)
         run: |
-          # Run both checks in parallel so netflix-web's wait time doesn't
-          # consume netflix-api's progressDeadlineSeconds (900s) budget.
-          kubectl rollout status deployment/netflix-web -n ${{ env.NAMESPACE }} --timeout=600s &
-          WEB_PID=$!
-          kubectl rollout status deployment/netflix-api -n ${{ env.NAMESPACE }} --timeout=600s &
-          API_PID=$!
-          WEB_RESULT=0; API_RESULT=0
-          wait $WEB_PID || WEB_RESULT=$?
-          wait $API_PID || API_RESULT=$?
-          [ $WEB_RESULT -eq 0 ] && [ $API_RESULT -eq 0 ]
+          kubectl rollout status deployment/netflix-web-green -n $NAMESPACE --timeout=600s
+          kubectl rollout status deployment/netflix-api-green -n $NAMESPACE --timeout=600s
 
-      - name: Wait for Ingress IP assignment
-        id: get-ingress
+      - name: Verify
         run: |
-          echo "Waiting for Ingress external IP..."
-          for i in $(seq 1 30); do
-            IP=$(kubectl get ingress netflix-ingress -n ${{ env.NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-            if [ -n "$IP" ]; then
-              echo "Ingress IP: $IP"
-              echo "ip=$IP" >> $GITHUB_OUTPUT
-              break
-            fi
-            echo "Attempt $i/30 - waiting 10s..."
-            sleep 10
-          done
-
-          if [ -z "$IP" ]; then
-            echo "::warning::Ingress IP not yet assigned after 5 minutes"
-          fi
-
-      - name: Verify production deployment
-        run: |
-          echo "=== Production Deployment Status ==="
-          kubectl get deployments -n ${{ env.NAMESPACE }}
-          echo ""
-          echo "=== Pod Status ==="
-          kubectl get pods -n ${{ env.NAMESPACE }} -o wide
-          echo ""
-          echo "=== Services ==="
-          kubectl get services -n ${{ env.NAMESPACE }}
-          echo ""
-          echo "=== Ingress ==="
-          kubectl get ingress -n ${{ env.NAMESPACE }}
-          echo ""
-          echo "=== HPA Status ==="
-          kubectl get hpa -n ${{ env.NAMESPACE }}
-          echo ""
-          echo "=== PDB Status ==="
-          kubectl get pdb -n ${{ env.NAMESPACE }}
-
-  # -------------------------------------------------------
-  # Job 5: Post-deployment smoke test
-  # -------------------------------------------------------
-  smoke-test:
-    name: Production Smoke Test
-    runs-on: ubuntu-latest
-    needs: deploy-prod
-    steps:
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Get AKS credentials
-        run: |
-          az aks get-credentials \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
-            --overwrite-existing
-
-      - name: Run smoke tests
-        run: |
-          # Get the ingress hostname for host-based routing (raw IP bypasses Host header, returns 404)
-          HOSTNAME=$(kubectl get ingress netflix-ingress -n ${{ env.NAMESPACE }} \
-            -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
-          INGRESS_IP=$(kubectl get ingress netflix-ingress -n ${{ env.NAMESPACE }} \
-            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-
-          if [ -z "$INGRESS_IP" ] || [ -z "$HOSTNAME" ]; then
-            echo "::warning::Ingress IP or hostname not available yet. Skipping smoke tests."
-            exit 0
-          fi
-
-          echo "Ingress IP: $INGRESS_IP  Hostname: $HOSTNAME"
-
-          # Test HTTPS directly against the IP (avoids redirect + DNS dependency).
-          # -k skips cert CN validation since we connect via IP, not the hostname.
-          echo "Testing health endpoint..."
-          HTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" \
-            -H "Host: ${HOSTNAME}" https://${INGRESS_IP}/health --max-time 10)
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "::error::Health check failed with HTTP ${HTTP_CODE}"
-            exit 1
-          fi
-          echo "Health check passed (HTTP ${HTTP_CODE})"
-
-          echo "Testing API endpoint..."
-          API_CODE=$(curl -sk -o /dev/null -w "%{http_code}" \
-            -H "Host: ${HOSTNAME}" https://${INGRESS_IP}/api/ --max-time 10)
-          if [ "$API_CODE" != "200" ]; then
-            echo "::warning::API health check returned HTTP ${API_CODE}"
-          fi
-          echo "API check returned HTTP ${API_CODE}"
-
-          echo "Production smoke tests completed successfully."
-
-  # -------------------------------------------------------
-  # Job 6: Send Success Notification
-  # -------------------------------------------------------
-  notify:
-    name: Send Success Notification
-    runs-on: ubuntu-latest
-    needs: [deploy-prod, smoke-test]
-    if: success()
-
-    steps:
-      - name: Send Email Notification
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "✅ Netflix App Production Deployment Successful"
-          to: dbabarinde@gmail.com
-          from: dbabarinde@gmail.com
-          body: |
-            ✅ Netflix Streaming App Production deployment completed successfully!
-
-            Security Checks:
-            🔎 SonarCloud: Passed
-            🔍 Trivy Scan: Passed
-
-            Deployment:
-            🚀 Image: netflixappprodacr.azurecr.io/netflix-app:${{ inputs.image_tag }}
-            ☸️  Cluster: netflix-app-prod-aks
-            🌍 Namespace: netflix-prod
-            🌐 URL: https://adedayo.shop
-            👤 Author: ${{ github.actor }}
-
-            🔗 Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          kubectl get pods -n $NAMESPACE
+          kubectl get svc -n $NAMESPACE

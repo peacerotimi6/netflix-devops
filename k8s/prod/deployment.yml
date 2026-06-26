@@ -14,6 +14,7 @@ spec:
   selector:
     matchLabels:
       app: netflix-web
+      slot: green   # important for blue/green stability
 
   strategy:
     type: RollingUpdate
@@ -26,6 +27,7 @@ spec:
       labels:
         app: netflix-web
         environment: prod
+        slot: green
 
     spec:
       automountServiceAccountToken: false
@@ -38,7 +40,7 @@ spec:
 
       containers:
         - name: netflix-web
-          image: netflixappdevacr.azurecr.io/netflix-app:v2
+          image: __ACR_LOGIN_SERVER__/netflix-app:__IMAGE_TAG__
           imagePullPolicy: Always
 
           ports:
@@ -78,3 +80,77 @@ spec:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflix-api
+  namespace: netflix-prod
+  labels:
+    app: netflix-api
+    environment: prod
+
+spec:
+  replicas: 2
+  progressDeadlineSeconds: 900
+
+  selector:
+    matchLabels:
+      app: netflix-api
+      slot: green
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  template:
+    metadata:
+      labels:
+        app: netflix-api
+        environment: prod
+        slot: green
+
+    spec:
+      automountServiceAccountToken: false
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: netflix-api
+          image: __ACR_LOGIN_SERVER__/netflix-api:__IMAGE_TAG__
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8080
+
+          envFrom:
+            - secretRef:
+                name: netflix-app-secrets
+
+          env:
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: TRANSFORMERS_CACHE
+              value: /tmp/huggingface
+
+          volumeMounts:
+            - name: tmp-storage
+              mountPath: /tmp
+
+          resources:
+            requests:
+              cpu: "300m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+
+      volumes:
+        - name: tmp-storage
+          emptyDir: {}

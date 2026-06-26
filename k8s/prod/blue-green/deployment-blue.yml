@@ -20,11 +20,12 @@ spec:
         slot: blue
         environment: prod
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: netflix-web
-          image: netflixappdevacr.azurecr.io/netflix-app:1
+          image: netflixappprodacr.azurecr.io/netflix-app:a1b2c3d
           ports:
-            - containerPort: 8080
+            - containerPort: 80
           envFrom:
             - configMapRef:
                 name: netflix-app-config
@@ -61,27 +62,23 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 1000
-        runAsNonRoot: false   # IMPORTANT FIX (prevents /home/appuser crash)
+        runAsNonRoot: false
       containers:
         - name: netflix-api
-          image: netflixappdevacr.azurecr.io/netflix-api:v3
+          image: netflixappprodacr.azurecr.io/netflix-api:a1b2c3d
           ports:
             - containerPort: 8080
-
           env:
             - name: HF_HOME
               value: /tmp/hf
             - name: TRANSFORMERS_CACHE
               value: /tmp/hf
-
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-
           envFrom:
             - secretRef:
                 name: netflix-app-secrets
-
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 200m
@@ -89,38 +86,6 @@ spec:
             limits:
               cpu: 1000m
               memory: 2Gi
-
       volumes:
         - name: tmp
           emptyDir: {}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netflix-web-green
-  namespace: netflix-prod
-  labels:
-    app: netflix-web
-    slot: green
-    environment: prod
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: netflix-web
-      slot: green
-  template:
-    metadata:
-      labels:
-        app: netflix-web
-        slot: green
-        environment: prod
-    spec:
-      containers:
-        - name: netflix-web
-          image: netflixappdevacr.azurecr.io/netflix-app:v1
-          ports:
-            - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: netflix-app-config

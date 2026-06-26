@@ -1,14 +1,10 @@
-name: Blue/Green Deploy to Production
+name: CD - Blue/Green Deploy to Production
 
 on:
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: "Image tag to deploy (short SHA)"
-        required: true
-        type: string
       action:
-        description: "Action to perform"
+        description: "Action"
         required: true
         type: choice
         options:
@@ -16,7 +12,7 @@ on:
           - switch-only
           - rollback
       confirm:
-        description: "Type 'confirm' to proceed with production change"
+        description: "Type 'confirm' to proceed"
         required: true
         type: string
 
@@ -33,28 +29,26 @@ permissions:
 jobs:
 
   validate:
-    name: Validate Request
     runs-on: ubuntu-latest
     steps:
-      - name: Check confirmation
+      - name: Confirm safety
         run: |
           if [ "${{ github.event.inputs.confirm }}" != "confirm" ]; then
-            echo "::error::You must type 'confirm' to proceed."
+            echo "You must type confirm"
             exit 1
           fi
 
-  blue-green:
-    name: Blue/Green (${{ github.event.inputs.action }})
+  deploy:
     runs-on: ubuntu-latest
     needs: validate
     environment: production
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
       # -----------------------------
-      # Azure Login (OIDC)
+      # Azure Login
       # -----------------------------
       - name: Azure Login
         uses: azure/login@v2
@@ -64,27 +58,22 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # -----------------------------
-      # AKS credentials (FIXED PART)
+      # Get AKS credentials
       # -----------------------------
-      - name: Get AKS credentials
+      - name: AKS login
         run: |
-          echo "Using RG: $AKS_RESOURCE_GROUP"
-          echo "Using Cluster: $AKS_CLUSTER_NAME"
-
           az aks get-credentials \
-            --resource-group "$AKS_RESOURCE_GROUP" \
-            --name "$AKS_CLUSTER_NAME" \
+            --resource-group $AKS_RESOURCE_GROUP \
+            --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
       # -----------------------------
-      # Detect active slot
+      # Detect inactive slot
       # -----------------------------
-      - name: Detect active slot
+      - name: Detect slot
         id: slots
         run: |
-          ACTIVE=$(kubectl get service netflix-web-service \
-            -n $NAMESPACE \
-            -o jsonpath='{.spec.selector.slot}' 2>/dev/null || echo "blue")
+          ACTIVE=$(kubectl get service netflix-web-service -n $NAMESPACE -o jsonpath='{.spec.selector.slot}' || echo "blue")
 
           if [ "$ACTIVE" = "blue" ]; then
             INACTIVE="green"
@@ -95,26 +84,23 @@ jobs:
           echo "active=$ACTIVE" >> $GITHUB_OUTPUT
           echo "inactive=$INACTIVE" >> $GITHUB_OUTPUT
 
-          echo "Active slot: $ACTIVE"
-          echo "Inactive slot: $INACTIVE"
-
       # -----------------------------
-      # Deploy to inactive slot
+      # Deploy inactive slot
       # -----------------------------
-      - name: Deploy to inactive slot
+      - name: Deploy
         if: github.event.inputs.action == 'deploy-and-switch'
         run: |
-          IMAGE_TAG=${{ github.event.inputs.image_tag }}
           SLOT=${{ steps.slots.outputs.inactive }}
+          IMAGE_TAG=${{ github.sha }}
 
-          sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
-              -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
+          sed -e "s|__ACR__|$ACR_LOGIN_SERVER|g" \
+              -e "s|__TAG__|$IMAGE_TAG|g" \
               k8s/prod/blue-green/deployment-${SLOT}.yml | kubectl apply -f -
 
       # -----------------------------
-      # Wait for rollout
+      # Wait rollout
       # -----------------------------
-      - name: Wait for rollout
+      - name: Wait rollout
         if: github.event.inputs.action == 'deploy-and-switch'
         run: |
           SLOT=${{ steps.slots.outputs.inactive }}
@@ -126,15 +112,15 @@ jobs:
       # Switch traffic
       # -----------------------------
       - name: Switch traffic
-        if: github.event.inputs.action == 'deploy-and-switch' || github.event.inputs.action == 'switch-only'
+        if: github.event.inputs.action != 'rollback'
         run: |
           TARGET=${{ steps.slots.outputs.inactive }}
 
           kubectl patch service netflix-web-service -n $NAMESPACE \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"$TARGET\"}}}"
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$TARGET\"}}}"
 
           kubectl patch service netflix-api-service -n $NAMESPACE \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"$TARGET\"}}}"
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$TARGET\"}}}"
 
       # -----------------------------
       # Rollback
@@ -145,15 +131,15 @@ jobs:
           TARGET=${{ steps.slots.outputs.active }}
 
           kubectl patch service netflix-web-service -n $NAMESPACE \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"$TARGET\"}}}"
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$TARGET\"}}}"
 
           kubectl patch service netflix-api-service -n $NAMESPACE \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"$TARGET\"}}}"
+            -p "{\"spec\":{\"selector\":{\"slot\":\"$TARGET\"}}}"
 
       # -----------------------------
       # Verify
       # -----------------------------
       - name: Verify
         run: |
+          kubectl get pods -n $NAMESPACE
           kubectl get svc -n $NAMESPACE
-          kubectl get pods -n $NAMESPACE -o wide
