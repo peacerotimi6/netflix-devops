@@ -10,7 +10,7 @@ env:
   ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
   AKS_CLUSTER_NAME: netflix-app-prod-aks
   AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
-  NAMESPACE: netflix-prod
+  NAMESPACE: netflix-dev
   FRONTEND_IMAGE: netflix-app
   API_IMAGE: netflix-api
 
@@ -20,9 +20,9 @@ permissions:
 
 jobs:
 
-  # -------------------------------------------------------
-  # Job 1: SonarCloud Code Analysis
-  # -------------------------------------------------------
+# ----------------------------
+# 1. CODE SCAN
+# ----------------------------
   sonarcloud-analysis:
     name: SonarCloud Code Analysis
     runs-on: ubuntu-latest
@@ -44,24 +44,24 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # -------------------------------------------------------
-  # Job 2: Build and Push Images
-  # -------------------------------------------------------
+# ----------------------------
+# 2. BUILD & PUSH
+# ----------------------------
   build-and-push:
-    name: Build & Push to ACR
+    name: Build & Push Images
     runs-on: ubuntu-latest
     needs: sonarcloud-analysis
 
     outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Generate image tag
-        id: meta
-        run: echo "tags=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+        id: tag
+        run: echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -71,32 +71,26 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Login to ACR
-        run: az acr login --name ${{ env.ACR_NAME }}
+        run: az acr login --name $ACR_NAME
 
-      - name: Build and push frontend image
-        working-directory: ./app
+      # ----------------------------
+      # FIXED PATHS (IMPORTANT)
+      # ----------------------------
+      - name: Build & Push Frontend
+        working-directory: .
         run: |
-          docker build -f Dockerfile.frontend \
-            --build-arg VITE_APP_TMDB_V3_API_KEY=${{ secrets.TMDB_API_KEY }} \
-            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tags }} \
-            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest \
-            .
-          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.tags }}
-          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest
+          docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:${{ steps.tag.outputs.image_tag }} ./app/web
+          docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:${{ steps.tag.outputs.image_tag }}
 
-      - name: Build and push API image
-        working-directory: ./app
+      - name: Build & Push API
+        working-directory: .
         run: |
-          docker build -f Dockerfile \
-            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.tags }} \
-            -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest \
-            .
-          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.tags }}
-          docker push ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest
+          docker build -t $ACR_LOGIN_SERVER/$API_IMAGE:${{ steps.tag.outputs.image_tag }} ./app/api
+          docker push $ACR_LOGIN_SERVER/$API_IMAGE:${{ steps.tag.outputs.image_tag }}
 
-  # -------------------------------------------------------
-  # Job 3: Deploy to AKS (FIXED)
-  # -------------------------------------------------------
+# ----------------------------
+# 3. DEPLOY
+# ----------------------------
   deploy-dev:
     name: Deploy to Dev AKS
     runs-on: ubuntu-latest
@@ -116,29 +110,27 @@ jobs:
       - name: Get AKS credentials
         run: |
           az aks get-credentials \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --resource-group $AKS_RESOURCE_GROUP \
+            --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+      - name: Create Namespace (FIXED)
+        run: |
+          kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create namespace
-        run: kubectl create namespace ${{ env.NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy manifests
+      - name: Deploy to Kubernetes
         run: |
           IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
 
-          sed -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
-              -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
+          sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
+              -e "s|__IMAGE_TAG__|$IMAGE_TAG|g" \
               k8s/dev/deployment.yml | kubectl apply -f -
 
           kubectl apply -f k8s/dev/service.yml
           kubectl apply -f k8s/dev/ingress.yml
           kubectl apply -f k8s/dev/hpa.yml
 
-      - name: Verify deployment
+      - name: Verify Deployment
         run: |
-          kubectl get pods -n ${{ env.NAMESPACE }}
-          kubectl get svc -n ${{ env.NAMESPACE }}
+          kubectl get pods -n $NAMESPACE
+          kubectl get svc -n $NAMESPACE
