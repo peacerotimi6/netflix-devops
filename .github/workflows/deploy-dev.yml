@@ -1,18 +1,23 @@
-name: CI - Build & Deploy Dev
+name: Deploy to Production
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (e.g. fc28d7d or latest)"
+        required: true
+        type: string
+      confirm_deploy:
+        description: "Type deploy-prod to confirm"
+        required: true
+        type: string
 
 env:
-  ACR_LOGIN_SERVER: netflixappdevacr.azurecr.io
-  ACR_NAME: netflixappdevacr
-  AKS_CLUSTER_NAME: netflix-app-dev-aks
-  AKS_RESOURCE_GROUP: netflix-app-dev-rg
-  NAMESPACE: netflix-dev
-  FRONTEND_IMAGE: netflix-app
-  API_IMAGE: netflix-api
+  ACR_NAME: netflixappprodacr
+  ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
+  AKS_CLUSTER_NAME: netflix-app-prod-aks
+  AKS_RESOURCE_GROUP: netflix-app-prod-rg-we
+  NAMESPACE: netflix-prod
 
 permissions:
   id-token: write
@@ -20,49 +25,25 @@ permissions:
 
 jobs:
 
-  build-and-push:
+  validate:
     runs-on: ubuntu-latest
-
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Generate tag
-        id: meta
-        run: echo "tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: ACR Login
-        run: az acr login --name $ACR_NAME
-
-      - name: Build & Push API
+      - name: Validate confirmation
         run: |
-          docker build -t $ACR_LOGIN_SERVER/$API_IMAGE:${{ steps.meta.outputs.tag }} -t $ACR_LOGIN_SERVER/$API_IMAGE:latest ./app
-          docker push $ACR_LOGIN_SERVER/$API_IMAGE:${{ steps.meta.outputs.tag }}
-          docker push $ACR_LOGIN_SERVER/$API_IMAGE:latest
-
-      - name: Build & Push Web
-        run: |
-          docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:${{ steps.meta.outputs.tag }} -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest ./app
-          docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:${{ steps.meta.outputs.tag }}
-          docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+          if [ "${{ github.event.inputs.confirm_deploy }}" != "deploy-prod" ]; then
+            echo "❌ You must type deploy-prod"
+            exit 1
+          fi
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: validate
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Azure Login
+      - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -76,16 +57,42 @@ jobs:
             --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Deploy
+      - name: Verify ACR tag exists (hard fail)
         run: |
-          TAG=${{ needs.build-and-push.outputs.image_tag }}
+          TAG=${{ github.event.inputs.image_tag }}
 
+          echo "Checking if tag exists: $TAG"
+
+          az acr repository show-tags \
+            --name $ACR_NAME \
+            --repository netflix-api \
+            --query "[?@=='$TAG']" -o tsv | grep $TAG
+
+          az acr repository show-tags \
+            --name $ACR_NAME \
+            --repository netflix-app \
+            --query "[?@=='$TAG']" -o tsv | grep $TAG
+
+      - name: Deploy Kubernetes manifests
+        run: |
+          TAG=${{ github.event.inputs.image_tag }}
+
+          echo "🚀 Deploying tag: $TAG"
+
+          # Replace placeholders in ALL manifests
           sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
               -e "s|__IMAGE_TAG__|$TAG|g" \
-              k8s/dev/deployment.yml | kubectl apply -f -
+              k8s/prod/deployment.yml | kubectl apply -f -
 
-          kubectl apply -f k8s/dev/service.yml
-          kubectl apply -f k8s/dev/ingress.yml
+          kubectl apply -f k8s/prod/service.yml
+          kubectl apply -f k8s/prod/ingress.yml
+          kubectl apply -f k8s/prod/hpa.yml
+          kubectl apply -f k8s/prod/pdb.yml
+
+      - name: Rollout status
+        run: |
+          kubectl rollout status deployment/netflix-web-green -n $NAMESPACE --timeout=600s
+          kubectl rollout status deployment/netflix-api-green -n $NAMESPACE --timeout=600s
 
       - name: Verify
         run: |
