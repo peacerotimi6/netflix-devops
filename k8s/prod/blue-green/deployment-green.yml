@@ -1,6 +1,45 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: netflix-web-green
+  namespace: netflix-prod
+  labels:
+    app: netflix-web
+    slot: green
+    environment: prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: netflix-web
+      slot: green
+  template:
+    metadata:
+      labels:
+        app: netflix-web
+        slot: green
+        environment: prod
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: netflix-web
+          image: netflixappprodacr.azurecr.io/netflix-app:a1b2c3d
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: netflix-app-config
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: netflix-api-green
   namespace: netflix-prod
   labels:
@@ -26,84 +65,27 @@ spec:
         runAsNonRoot: false
       containers:
         - name: netflix-api
-          image: netflixappprodacr.azurecr.io/netflix-api:v3
+          image: netflixappprodacr.azurecr.io/netflix-api:a1b2c3d
           ports:
             - containerPort: 8080
-
           env:
             - name: HF_HOME
               value: /tmp/hf
             - name: TRANSFORMERS_CACHE
               value: /tmp/hf
-
           envFrom:
             - secretRef:
                 name: netflix-app-secrets
-
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              cpu: 300m
+              memory: 512Mi
             limits:
-              memory: "512Mi"
-              cpu: "500m"
-
+              cpu: 1000m
+              memory: 1Gi
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-
-      volumes:
-        - name: tmp
-          emptyDir: {}
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: netflix-web-green
-  namespace: netflix-prod
-  labels:
-    app: netflix-web
-    slot: green
-    environment: prod
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: netflix-web
-      slot: green
-  template:
-    metadata:
-      labels:
-        app: netflix-web
-        slot: green
-        environment: prod
-    spec:
-      automountServiceAccountToken: false
-      securityContext:
-        runAsUser: 1000
-        runAsNonRoot: false
-      containers:
-        - name: netflix-web
-          image: netflixappprodacr.azurecr.io/netflix-app:v3
-          ports:
-            - containerPort: 80
-
-          env:
-            - name: VITE_API_URL
-              value: "https://api.netflix.com"
-
-          resources:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"
-              cpu: "200m"
-
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-
       volumes:
         - name: tmp
           emptyDir: {}
