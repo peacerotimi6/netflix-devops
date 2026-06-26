@@ -17,15 +17,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -----------------------------
-      # Checkout code
-      # -----------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # -----------------------------
-      # Azure Login (OIDC)
-      # -----------------------------
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -33,48 +27,27 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # -----------------------------
-      # Login to ACR
-      # -----------------------------
       - name: Login to ACR
         run: az acr login --name $ACR_NAME
 
-      # -----------------------------
-      # Set image tag
-      # -----------------------------
       - name: Set image tag
         run: echo "IMAGE_TAG=${GITHUB_SHA}" >> $GITHUB_ENV
 
-      # -----------------------------
-      # Build API image
-      # -----------------------------
       - name: Build API image
         run: |
           docker build -t $ACR_LOGIN_SERVER/netflix-api:$IMAGE_TAG ./api
 
-      # -----------------------------
-      # Build Web image
-      # -----------------------------
       - name: Build Web image
         run: |
           docker build -t $ACR_LOGIN_SERVER/netflix-app:$IMAGE_TAG ./web
 
-      # -----------------------------
-      # Push API image
-      # -----------------------------
       - name: Push API image
         run: |
           docker push $ACR_LOGIN_SERVER/netflix-api:$IMAGE_TAG
 
-      # -----------------------------
-      # Push Web image
-      # -----------------------------
       - name: Push Web image
         run: |
           docker push $ACR_LOGIN_SERVER/netflix-app:$IMAGE_TAG
 
-      # -----------------------------
-      # Output tag
-      # -----------------------------
-      - name: Print image tag
-        run: echo "Deployed image tag: $IMAGE_TAG"
+      - name: Output image tag
+        run: echo "IMAGE_TAG=$IMAGE_TAG"
