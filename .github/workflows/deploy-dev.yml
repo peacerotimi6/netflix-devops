@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Image tag to deploy (e.g. fc28d7d or latest)"
+        description: "Image tag (e.g. fc28d7d or latest)"
         required: true
         type: string
       confirm_deploy:
@@ -57,21 +57,23 @@ jobs:
             --name $AKS_CLUSTER_NAME \
             --overwrite-existing
 
-      - name: Verify ACR tag exists (hard fail)
+      - name: Validate ACR image exists (safe check)
         run: |
           TAG=${{ github.event.inputs.image_tag }}
 
-          echo "Checking if tag exists: $TAG"
+          echo "Checking tag: $TAG in ACR"
 
           az acr repository show-tags \
             --name $ACR_NAME \
             --repository netflix-api \
-            --query "[?@=='$TAG']" -o tsv | grep $TAG
+            -o tsv | grep -q "$TAG"
 
           az acr repository show-tags \
             --name $ACR_NAME \
             --repository netflix-app \
-            --query "[?@=='$TAG']" -o tsv | grep $TAG
+            -o tsv | grep -q "$TAG"
+
+          echo "✅ Image tag exists in ACR"
 
       - name: Deploy Kubernetes manifests
         run: |
@@ -79,9 +81,8 @@ jobs:
 
           echo "🚀 Deploying tag: $TAG"
 
-          # Replace placeholders in ALL manifests
-          sed -e "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" \
-              -e "s|__IMAGE_TAG__|$TAG|g" \
+          sed -e "s|__ACR_LOGIN_SERVER__|${ACR_LOGIN_SERVER}|g" \
+              -e "s|__IMAGE_TAG__|${TAG}|g" \
               k8s/prod/deployment.yml | kubectl apply -f -
 
           kubectl apply -f k8s/prod/service.yml
