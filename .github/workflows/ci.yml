@@ -78,3 +78,4 @@ jobs:
       # -----------------------------
       - name: Print image tag
         run: echo "Deployed image tag: $IMAGE_TAG"
+#
