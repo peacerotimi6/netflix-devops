@@ -12,7 +12,7 @@ terraform {
   }
   backend "azurerm" {
     resource_group_name  = "terraform-state-rg"
-    storage_account_name = "tfstatenetflixdev"
+    storage_account_name = "tfstatenetflix001"
     container_name       = "tfstate"
     key                  = "dev.terraform.tfstate"
     # Use managed identity for state access instead of storage keys

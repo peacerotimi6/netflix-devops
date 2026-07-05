@@ -6,7 +6,7 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for all resources"
   type        = string
-  default     = "eastus"
+  default     = "westeurope"
 }
 
 variable "acr_name" {
@@ -89,7 +89,7 @@ variable "app_node_count" {
 variable "app_node_vm_size" {
   description = "VM size for the app node pool"
   type        = string
-  default     = "Standard_D2s_v3"
+  default     = "Standard_D7s_v3"
 }
 
 variable "app_min_count" {
