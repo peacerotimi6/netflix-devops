@@ -6,11 +6,13 @@ on:
     paths:
       - "Modules/**"
       - "environment/**"
+
   pull_request:
     branches: [main]
     paths:
       - "Modules/**"
       - "environment/**"
+
   workflow_dispatch:
     inputs:
       environment:
@@ -20,6 +22,7 @@ on:
         options:
           - dev
           - prod
+
       action:
         description: "Terraform action"
         required: true
@@ -36,13 +39,15 @@ permissions:
 
 jobs:
   # -------------------------------------------------------
-  # Terraform Plan (runs on PR or manual trigger)
+  # Terraform Plan
   # -------------------------------------------------------
   terraform-plan:
     name: Terraform Plan (${{ github.event.inputs.environment || 'dev' }})
     runs-on: ubuntu-latest
+
     env:
       TF_WORKING_DIR: environment/${{ github.event.inputs.environment || 'dev' }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,9 +64,10 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # ✅ FIX: backend mismatch / wrong storage / cached config issues
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
+        run: terraform init -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -97,7 +103,7 @@ jobs:
           path: ${{ env.TF_WORKING_DIR }}/tfplan
 
   # -------------------------------------------------------
-  # Terraform Apply (manual trigger only)
+  # Terraform Apply
   # -------------------------------------------------------
   terraform-apply:
     name: Terraform Apply (${{ github.event.inputs.environment || 'dev' }})
@@ -105,8 +111,10 @@ jobs:
     needs: terraform-plan
     if: github.event.inputs.action == 'apply'
     environment: ${{ github.event.inputs.environment }}
+
     env:
       TF_WORKING_DIR: environment/${{ github.event.inputs.environment }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -129,9 +137,10 @@ jobs:
           name: tfplan-${{ github.event.inputs.environment }}
           path: ${{ env.TF_WORKING_DIR }}
 
+      # ✅ FIX added here too
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init
+        run: terraform init -reconfigure
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
