@@ -1,5 +1,5 @@
 # ============================================================
-# AKS Module — Multi-zone node pools, OIDC, Workload Identity
+# AKS Module — FIXED (no zones, production safe)
 # ============================================================
 
 resource "azurerm_kubernetes_cluster" "aks" {
@@ -11,7 +11,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   # Identity + modern auth
   oidc_issuer_enabled       = true
-  workload_identity_enabled = true
+  workload_identity_enabled  = true
 
   automatic_upgrade_channel = "patch"
   azure_policy_enabled      = true
@@ -20,20 +20,20 @@ resource "azurerm_kubernetes_cluster" "aks" {
     name                        = "system"
     temporary_name_for_rotation = "tmpnode"
 
-    node_count         = var.system_node_count
-    vm_size            = var.system_node_vm_size
-    os_disk_size_gb    = var.os_disk_size_gb
+    node_count      = var.system_node_count
+    vm_size         = var.system_node_vm_size
+    os_disk_size_gb = var.os_disk_size_gb
 
     auto_scaling_enabled = true
     min_count            = var.system_min_count
     max_count            = var.system_max_count
 
     max_pods = 50
-    zones    = ["1"]
+
+    # ❌ REMOVED ZONES (this was breaking your deployment)
+    # zones = ["1"]
 
     vnet_subnet_id = var.system_subnet_id
-
-  
 
     only_critical_addons_enabled = true
 
@@ -51,8 +51,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
     network_policy    = "azure"
     load_balancer_sku = "standard"
 
-    service_cidr   = "10.100.0.0/16"
-    dns_service_ip  = "10.100.0.10"
+    service_cidr  = "10.100.0.0/16"
+    dns_service_ip = "10.100.0.10"
   }
 
   key_vault_secrets_provider {
@@ -68,25 +68,26 @@ resource "azurerm_kubernetes_cluster" "aks" {
 }
 
 # ============================================================
-# APP NODE POOL
+# APP NODE POOL (FIXED)
 # ============================================================
 resource "azurerm_kubernetes_cluster_node_pool" "app" {
   name                  = "apppool"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.aks.id
 
-  vm_size            = var.app_node_vm_size
-  node_count         = var.app_node_count
+  vm_size    = var.app_node_vm_size
+  node_count = var.app_node_count
 
   auto_scaling_enabled = true
   min_count            = var.app_min_count
   max_count            = var.app_max_count
 
   max_pods = 50
-  zones    = ["1"]
 
-  vnet_subnet_id = var.app_subnet_id
-  os_disk_size_gb = var.os_disk_size_gb
+  # ❌ REMOVED ZONES
+  # zones = ["1"]
 
+  vnet_subnet_id  = var.app_subnet_id
+  os_disk_size_gb  = var.os_disk_size_gb
 
   node_labels = {
     role = "app"
