@@ -6,7 +6,7 @@ acr_name            = "netflixappprodacr"
 aks_cluster_name    = "netflix-app-prod-aks"
 dns_prefix          = "netflix-prod"
 kubernetes_version  = "1.33"
-key_vault_name      = "netflix-prod-kv"
+key_vault_name      = "netflix-prod-kv002"
 
 # Networking
 vnet_name          = "netflix-prod-vnet"
