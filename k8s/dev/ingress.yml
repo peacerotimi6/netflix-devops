@@ -7,19 +7,13 @@ metadata:
     app: netflix-web
     environment: dev
   annotations:
-    # Use staging issuer for dev (no rate limits, untrusted cert)
-    cert-manager.io/cluster-issuer: "letsencrypt-staging"
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - dev.adedayo.shop
-      secretName: dev-adedayo-shop-tls
   rules:
-    - host: dev.adedayo.shop
+    - host: 48.206.151.35.nip.io
       http:
         paths:
           - path: /
