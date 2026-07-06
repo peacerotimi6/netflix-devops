@@ -238,8 +238,8 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           subject: "✅ Netflix App Dev Deployment Successful"
-          to: dbabarinde@gmail.com
-          from: dbabarinde@gmail.com
+          to: peacerotimi6@gmail.com
+          from: peacerotimi6@gmail.com
           body: |
             ✅ Netflix Streaming App Dev deployment completed successfully!
 
@@ -255,4 +255,3 @@ jobs:
             👤 Author: ${{ github.actor }}
 
             🔗 Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-#
