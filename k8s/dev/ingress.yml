@@ -3,17 +3,19 @@ kind: Ingress
 metadata:
   name: netflix-ingress
   namespace: netflix-dev
-  labels:
-    app: netflix-web
-    environment: dev
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
 spec:
   ingressClassName: nginx
   rules:
-    - host: 48.206.151.35.nip.io
+    - host: netflix.local
       http:
         paths:
           - path: /

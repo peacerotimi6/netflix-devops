@@ -10,7 +10,7 @@ metadata:
     checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by the CI/CD pipeline"
     checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp dirs; readOnlyRootFilesystem disabled for web container"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: netflix-web
@@ -43,11 +43,11 @@ spec:
                 name: netflix-app-config
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: "250m"
-              memory: "256Mi"
+              cpu: 250m
+              memory: 256Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -116,11 +116,11 @@ spec:
                 name: netflix-app-secrets
           resources:
             requests:
-              cpu: "200m"
-              memory: "1Gi"
+              cpu: 250m
+              memory: 1Gi
             limits:
-              cpu: "1000m"
-              memory: "2Gi"
+              cpu: "1"
+              memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -129,8 +129,6 @@ spec:
             capabilities:
               drop:
                 - ALL
-          # startupProbe absorbs slow ML model loading (up to 5 min);
-          # liveness/readiness only activate once startup succeeds.
           startupProbe:
             httpGet:
               path: /
@@ -154,3 +152,5 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
+      restartPolicy: Always
+#

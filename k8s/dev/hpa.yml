@@ -11,8 +11,10 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: netflix-web
+
   minReplicas: 2
   maxReplicas: 4
+
   metrics:
     - type: Resource
       resource:
@@ -20,9 +22,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80
