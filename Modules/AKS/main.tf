@@ -1,5 +1,5 @@
 # ============================================================
-# AKS Module — FIXED (no zones, production safe)
+# AKS Module — Production Safe (Fixed dependencies + no zones)
 # ============================================================
 
 resource "azurerm_kubernetes_cluster" "aks" {
@@ -10,8 +10,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
   kubernetes_version  = var.kubernetes_version
 
   # Identity + modern auth
-  oidc_issuer_enabled       = true
-  workload_identity_enabled  = true
+  oidc_issuer_enabled      = true
+  workload_identity_enabled = true
 
   automatic_upgrade_channel = "patch"
   azure_policy_enabled      = true
@@ -30,7 +30,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
     max_pods = 50
 
-    # ❌ REMOVED ZONES (this was breaking your deployment)
+    # ✅ FIX: removed zones (prevents region failure)
     # zones = ["1"]
 
     vnet_subnet_id = var.system_subnet_id
@@ -51,7 +51,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     network_policy    = "azure"
     load_balancer_sku = "standard"
 
-    service_cidr  = "10.100.0.0/16"
+    service_cidr   = "10.100.0.0/16"
     dns_service_ip = "10.100.0.10"
   }
 
@@ -60,15 +60,21 @@ resource "azurerm_kubernetes_cluster" "aks" {
     secret_rotation_interval = "2m"
   }
 
+  # ✅ FIX: direct dependency (no conditional reference)
   oms_agent {
-    log_analytics_workspace_id = var.create_log_analytics ? azurerm_log_analytics_workspace.aks[0].id : var.log_analytics_workspace_id
+    log_analytics_workspace_id = azurerm_log_analytics_workspace.aks.id
   }
 
   tags = var.tags
+
+  # 🔥 ENSURE workspace exists before AKS uses it
+  depends_on = [
+    azurerm_log_analytics_workspace.aks
+  ]
 }
 
 # ============================================================
-# APP NODE POOL (FIXED)
+# APP NODE POOL
 # ============================================================
 resource "azurerm_kubernetes_cluster_node_pool" "app" {
   name                  = "apppool"
@@ -83,11 +89,11 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
 
   max_pods = 50
 
-  # ❌ REMOVED ZONES
+  # zones removed (safe for all regions)
   # zones = ["1"]
 
   vnet_subnet_id  = var.app_subnet_id
-  os_disk_size_gb  = var.os_disk_size_gb
+  os_disk_size_gb = var.os_disk_size_gb
 
   node_labels = {
     role = "app"
@@ -107,10 +113,9 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 }
 
 # ============================================================
-# LOG ANALYTICS
+# LOG ANALYTICS (MUST EXIST BEFORE AKS)
 # ============================================================
 resource "azurerm_log_analytics_workspace" "aks" {
-  count               = var.create_log_analytics ? 1 : 0
   name                = "${var.cluster_name}-logs"
   location            = var.location
   resource_group_name = var.resource_group_name
