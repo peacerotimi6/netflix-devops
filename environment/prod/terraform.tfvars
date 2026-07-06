@@ -1,7 +1,7 @@
 # Production Environment Configuration
 
 resource_group_name = "netflix-app-prod-rg"
-location            = "eastus"
+location            = "uksouth"
 acr_name            = "netflixappprodacr"
 aks_cluster_name    = "netflix-app-prod-aks"
 dns_prefix          = "netflix-prod"
