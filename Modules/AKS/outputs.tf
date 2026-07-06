@@ -45,7 +45,7 @@ output "kubelet_identity_object_id" {
 
 output "log_analytics_workspace_id" {
   description = "ID of the Log Analytics workspace (if created)"
-  value       = var.create_log_analytics ? azurerm_log_analytics_workspace.aks[0].id : ""
+  value       = azurerm_log_analytics_workspace.aks.id
 }
 
 output "node_resource_group" {

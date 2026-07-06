@@ -1,7 +1,21 @@
 # ============================================================
-# AKS Module — Production Safe (Fixed dependencies + no zones)
+# AKS Module — Production Safe (Clean + Fixed)
 # ============================================================
 
+resource "azurerm_log_analytics_workspace" "aks" {
+  name                = "${var.cluster_name}-logs"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+
+  sku               = "PerGB2018"
+  retention_in_days = var.log_retention_days
+
+  tags = var.tags
+}
+
+# ============================================================
+# AKS CLUSTER
+# ============================================================
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = var.cluster_name
   location            = var.location
@@ -30,7 +44,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
     max_pods = 50
 
-    # ✅ FIX: removed zones (prevents region failure)
+    # ❌ IMPORTANT: zones removed (fixes Azure region errors)
     # zones = ["1"]
 
     vnet_subnet_id = var.system_subnet_id
@@ -60,14 +74,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
     secret_rotation_interval = "2m"
   }
 
-  # ✅ FIX: direct dependency (no conditional reference)
+  # Log Analytics (FIXED — no conditional, no [0])
   oms_agent {
     log_analytics_workspace_id = azurerm_log_analytics_workspace.aks.id
   }
 
   tags = var.tags
 
-  # 🔥 ENSURE workspace exists before AKS uses it
   depends_on = [
     azurerm_log_analytics_workspace.aks
   ]
@@ -89,7 +102,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
 
   max_pods = 50
 
-  # zones removed (safe for all regions)
+  # ❌ zones removed (prevents region failure)
   # zones = ["1"]
 
   vnet_subnet_id  = var.app_subnet_id
@@ -110,18 +123,4 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
   role_definition_name = "AcrPull"
   scope                = var.acr_id
-}
-
-# ============================================================
-# LOG ANALYTICS (MUST EXIST BEFORE AKS)
-# ============================================================
-resource "azurerm_log_analytics_workspace" "aks" {
-  name                = "${var.cluster_name}-logs"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-
-  sku               = "PerGB2018"
-  retention_in_days = var.log_retention_days
-
-  tags = var.tags
 }
