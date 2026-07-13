@@ -5,52 +5,80 @@ FROM node:18-alpine AS build
 
 WORKDIR /app
 
+# Copy dependency files
 COPY package.json package-lock.json ./
 
+# Install dependencies
 RUN npm ci --production=false
 
+# Copy source code
 COPY . .
 
+# ============================================
+# Vite environment variables
 # Must match src/constant/index.ts
+# ============================================
 ARG VITE_APP_TMDB_V3_API_KEY
 ARG VITE_APP_API_ENDPOINT_URL=https://api.themoviedb.org/3
 
 ENV VITE_APP_TMDB_V3_API_KEY=${VITE_APP_TMDB_V3_API_KEY}
 ENV VITE_APP_API_ENDPOINT_URL=${VITE_APP_API_ENDPOINT_URL}
 
+# Build React production files
 RUN npm run build
 
 
+
 # ============================================
-# Stage 2: Serve with Nginx
+# Stage 2: Serve React with Nginx
 # ============================================
 FROM nginx:1.27-alpine3.20 AS production
 
+
+# Apply security updates
 RUN apk upgrade --no-cache
 
+
+# Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
-COPY nginx.conf /etc/nginx/conf.d/
 
+# Copy custom nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+
+# Copy React build output
 COPY --from=build /app/dist /usr/share/nginx/html
 
 
+
+# ============================================
+# Configure nginx non-root user
+# ============================================
 RUN addgroup -g 10001 -S appgroup && \
     adduser -u 10001 -S appuser -G appgroup && \
     chown -R appuser:appgroup /usr/share/nginx/html && \
     chown -R appuser:appgroup /var/cache/nginx && \
     chown -R appuser:appgroup /var/log/nginx && \
+    mkdir -p /var/run && \
     touch /var/run/nginx.pid && \
-    chown appuser:appuser /var/run/nginx.pid
+    chown appuser:appgroup /var/run/nginx.pid
 
 
+
+# Container port
 EXPOSE 8080
 
 
+
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 
+
+# Run nginx as non-root
 USER appuser
+
 
 CMD ["nginx", "-g", "daemon off;"]
