@@ -33,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: netflix-web
-          image: __ACR_LOGIN_SERVER__/netflix-app:__IMAGE_TAG__
+          image: __ACR_LOGIN_SERVER__/netflix-web:__IMAGE_TAG__
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

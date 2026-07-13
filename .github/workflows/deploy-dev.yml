@@ -3,7 +3,9 @@ name: Deploy to Dev
 on:
   push:
     branches: [main]
+
   workflow_dispatch:
+
 
 env:
   ACR_NAME: netflixappdevacr
@@ -17,6 +19,7 @@ env:
   FRONTEND_IMAGE: netflix-web
   API_IMAGE: netflix-api
 
+
 permissions:
   id-token: write
   contents: read
@@ -27,84 +30,129 @@ jobs:
 # ======================================================
 # SONARCLOUD ANALYSIS
 # ======================================================
+
   sonarcloud-analysis:
+
     name: SonarCloud Code Analysis
+
     runs-on: ubuntu-latest
 
+
     steps:
+
       - name: Checkout code
         uses: actions/checkout@v4
+
         with:
           fetch-depth: 0
 
+
       - name: SonarCloud Scan
+
         uses: SonarSource/sonarcloud-github-action@v2
+
         with:
+
           projectBaseDir: ./app
+
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
 
+
         env:
+
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
+
 # ======================================================
-# BUILD AND PUSH IMAGES
+# BUILD AND PUSH DOCKER IMAGES
 # ======================================================
+
+
   build-and-push:
 
+
     name: Build & Push Images To ACR
+
     runs-on: ubuntu-latest
+
 
     needs: sonarcloud-analysis
 
+
     outputs:
+
       image_tag: ${{ steps.meta.outputs.image_tag }}
+
 
 
     steps:
 
+
       - name: Checkout code
+
         uses: actions/checkout@v4
 
 
+
       - name: Generate Image Tag
+
         id: meta
+
         run: |
+
           echo "image_tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
 
+
       - name: Azure Login OIDC
+
         uses: azure/login@v2
 
+
         with:
+
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 
+
       - name: Verify ACR Exists
+
         run: |
+
           az acr show \
-            --name ${{ env.ACR_NAME }} \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }}
+          --name ${{ env.ACR_NAME }}
+
 
 
       - name: Login To ACR
+
         run: |
-          az acr login --name ${{ env.ACR_NAME }}
+
+          az acr login \
+          --name ${{ env.ACR_NAME }}
 
 
 
 # ---------------- FRONTEND ----------------
 
-      - name: Build and Push Frontend
+
+      - name: Build Frontend Image
+
 
         working-directory: ./app
 
+
         run: |
+
 
           docker build \
           -f Dockerfile.frontend \
@@ -114,8 +162,10 @@ jobs:
           .
 
 
+
           docker push \
           ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+
 
 
           docker push \
@@ -123,13 +173,18 @@ jobs:
 
 
 
+
 # ---------------- API ----------------
 
-      - name: Build and Push API
+
+      - name: Build API Image
+
 
         working-directory: ./app
 
+
         run: |
+
 
           docker build \
           -f Dockerfile \
@@ -138,12 +193,15 @@ jobs:
           .
 
 
+
           docker push \
           ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
 
 
+
           docker push \
           ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest
+
 
 
 
@@ -152,35 +210,42 @@ jobs:
 
       - name: Trivy Scan Frontend
 
+
         uses: aquasecurity/trivy-action@master
+
 
         with:
 
-          image-ref:
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}
 
           format: table
 
           exit-code: 0
 
           severity: CRITICAL,HIGH
+
 
 
 
       - name: Trivy Scan API
 
+
         uses: aquasecurity/trivy-action@master
+
 
         with:
 
-          image-ref:
-            ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
 
           format: table
 
           exit-code: 0
 
           severity: CRITICAL,HIGH
+
+
 
 
 
@@ -188,28 +253,37 @@ jobs:
 # DEPLOY TO AKS
 # ======================================================
 
+
   deploy-dev:
+
 
     name: Deploy To Dev AKS
 
+
     runs-on: ubuntu-latest
+
 
     needs: build-and-push
 
+
     environment: dev
+
 
 
     steps:
 
 
       - name: Checkout code
+
         uses: actions/checkout@v4
+
 
 
 
       - name: Azure Login OIDC
 
         uses: azure/login@v2
+
 
         with:
 
@@ -221,9 +295,11 @@ jobs:
 
 
 
+
       - name: Get AKS Credentials
 
         run: |
+
 
           az aks get-credentials \
           --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
@@ -232,18 +308,40 @@ jobs:
 
 
 
-      - name: Install Namespace
+
+      - name: Attach ACR To AKS
+
 
         run: |
+
+
+          az aks update \
+          --name ${{ env.AKS_CLUSTER_NAME }} \
+          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+          --attach-acr ${{ env.ACR_NAME }}
+
+
+
+
+
+
+      - name: Create Namespace
+
+
+        run: |
+
 
           kubectl create namespace ${{ env.NAMESPACE }} \
           --dry-run=client -o yaml | kubectl apply -f -
 
 
 
-      - name: Create Application Secret
+
+      - name: Create Secrets
+
 
         run: |
+
 
           kubectl create secret generic netflix-app-secrets \
           --namespace=${{ env.NAMESPACE }} \
@@ -252,9 +350,13 @@ jobs:
 
 
 
+
+
       - name: Apply ConfigMap
 
+
         run: |
+
 
           kubectl apply \
           -f k8s/base/configmap.yml \
@@ -262,17 +364,23 @@ jobs:
 
 
 
+
+
       - name: Deploy Application
+
 
         run: |
 
+
           IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
+
 
 
           sed \
           -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
           -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
           k8s/dev/deployment.yml | kubectl apply -f -
+
 
 
           kubectl apply -f k8s/dev/service.yml
@@ -283,13 +391,19 @@ jobs:
 
 
 
+
+
+
       - name: Wait For Rollout
 
+
         run: |
+
 
           kubectl rollout status deployment/netflix-web \
           -n ${{ env.NAMESPACE }} \
           --timeout=600s
+
 
 
           kubectl rollout status deployment/netflix-api \
@@ -298,73 +412,120 @@ jobs:
 
 
 
+
+
+
       - name: Verify Deployment
+
 
         run: |
 
+
+          echo "==== PODS ===="
+
           kubectl get pods -n ${{ env.NAMESPACE }}
 
+
+
+          echo "==== SERVICES ===="
+
           kubectl get svc -n ${{ env.NAMESPACE }}
+
+
+
+          echo "==== INGRESS ===="
 
           kubectl get ingress -n ${{ env.NAMESPACE }}
 
 
 
+
+
+
 # ======================================================
-# NOTIFICATION
+# EMAIL NOTIFICATION
 # ======================================================
+
 
   notify:
 
+
     name: Deployment Notification
+
 
     runs-on: ubuntu-latest
 
+
     needs:
+
       - build-and-push
+
       - deploy-dev
+
+
 
     if: success()
 
 
+
     steps:
+
 
       - name: Send Email
 
+
         uses: dawidd6/action-send-mail@v3
 
+
         with:
+
 
           server_address: smtp.gmail.com
 
           server_port: 465
 
+
           username: ${{ secrets.SMTP_USERNAME }}
 
           password: ${{ secrets.SMTP_PASSWORD }}
 
+
           subject: "Netflix Dev Deployment Successful"
+
 
           to: peacerotimi6@gmail.com
 
           from: peacerotimi6@gmail.com
 
 
+
           body: |
+
 
             Netflix Streaming App deployment completed successfully.
 
+
             Images:
 
+
             Frontend:
+
             netflixappdevacr.azurecr.io/netflix-web:${{ needs.build-and-push.outputs.image_tag }}
 
+
+
             API:
+
             netflixappdevacr.azurecr.io/netflix-api:${{ needs.build-and-push.outputs.image_tag }}
 
 
+
             Cluster:
+
             netflix-app-dev-aks
 
+
+
             Namespace:
+
             netflix-dev
