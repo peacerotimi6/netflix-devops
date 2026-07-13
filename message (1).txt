@@ -51,7 +51,7 @@ npm install
 yarn install
 ```
 
-### 2. Start the Development Server
+###. Start the Development Server
 
 ```bash
 npm run dev
@@ -85,15 +85,14 @@ From the **project root directory** (not the app folder), run:
 
 ```bash
 # Build with API key as build argument
-docker build --build-arg VITE_APP_TMDB_V3_API_KEY=your_api_key_here -t netflix-clone .
+docker build --build-arg VITE_APP_TMDB_V3_API_KEY=1a76af27533f88f5cccf5a6fda33f266 -t netflix-clone .
 
 # Or with custom API endpoint
 docker build \
   --build-arg VITE_APP_TMDB_V3_API_KEY=your_api_key_here \
   --build-arg VITE_APP_API_ENDPOINT_URL=https://api.themoviedb.org/3 \
   -t netflix-clone .
-```
-
+``
 ### Running the Docker Container
 
 ```bash

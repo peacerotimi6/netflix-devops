@@ -7,13 +7,20 @@ const extendedApi = tmdbApi.injectEndpoints({
     getGenres: build.query<Genre[], string>({
       query: (mediaType) => ({
         url: `/genre/${mediaType}/list`,
-        params: { api_key: TMDB_V3_API_KEY },
+        params: {
+          api_key: TMDB_V3_API_KEY,
+        },
       }),
+
       transformResponse: (response: { genres: Genre[] }) => {
-        return response.genres;
+        return response?.genres ?? [];
       },
     }),
   }),
+  overrideExisting: false,
 });
 
-export const { useGetGenresQuery, endpoints: genreSliceEndpoints  } = extendedApi;
+export const {
+  useGetGenresQuery,
+  endpoints: genreSliceEndpoints,
+} = extendedApi;
