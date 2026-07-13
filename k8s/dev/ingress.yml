@@ -1,5 +1,6 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
+
 metadata:
   name: netflix-ingress
   namespace: netflix-dev
@@ -9,15 +10,16 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"
-    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+
 spec:
   ingressClassName: nginx
+
   rules:
     - host: netflix.local
       http:
         paths:
+
+          # React frontend
           - path: /
             pathType: Prefix
             backend:
@@ -25,7 +27,9 @@ spec:
                 name: netflix-web-service
                 port:
                   number: 80
-          - path: /api
+
+          # FastAPI ML service
+          - path: /embed
             pathType: Prefix
             backend:
               service:
