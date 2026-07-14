@@ -362,3 +362,4 @@ jobs:
           kubectl get svc -n ${{ env.NAMESPACE }}
 
           kubectl get ingress -n ${{ env.NAMESPACE }}
+#
