@@ -1,25 +1,36 @@
 name: Deploy to Production
 
+
 on:
   workflow_dispatch:
+
     inputs:
 
       image_tag:
+
         description: "Image tag to deploy (example: f18d3d1)"
+
         required: true
+
         type: string
 
+
       confirm_deploy:
+
         description: "Type deploy-prod to confirm"
+
         required: true
+
         type: string
+
 
 
 env:
 
-  ACR_NAME: netflixappprodacr
+  PROD_ACR_NAME: netflixappprodacr
 
-  ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
+  PROD_ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
+
 
   DEV_ACR_LOGIN_SERVER: netflixappdevacr.azurecr.io
 
@@ -32,11 +43,6 @@ env:
   NAMESPACE: netflix-prod
 
 
-  FRONTEND_IMAGE: netflix-web
-
-  API_IMAGE: netflix-api
-
-
 
 permissions:
 
@@ -46,17 +52,20 @@ permissions:
 
 
 
+
 jobs:
 
 
+
 # =====================================================
-# Validate Deployment
+# Validate Production Approval
 # =====================================================
+
 
   validate:
 
 
-    name: Validate Production Approval
+    name: Validate Deployment
 
 
     runs-on: ubuntu-latest
@@ -66,22 +75,25 @@ jobs:
     steps:
 
 
-      - name: Verify confirmation
+      - name: Check confirmation
 
 
         run: |
 
 
-          if [ "${{ github.event.inputs.confirm_deploy }}" != "deploy-prod" ]; then
+          if [ "${{ github.event.inputs.confirm_deploy }}" != "deploy-prod" ]
 
-            echo "❌ Invalid production confirmation"
+          then
+
+            echo "Invalid confirmation"
 
             exit 1
 
           fi
 
 
-          echo "✅ Production deployment approved"
+          echo "Production deployment approved"
+
 
 
 
@@ -91,10 +103,11 @@ jobs:
 # SonarCloud
 # =====================================================
 
+
   sonarcloud:
 
 
-    name: SonarCloud Quality Gate
+    name: SonarCloud Scan
 
 
     runs-on: ubuntu-latest
@@ -107,9 +120,10 @@ jobs:
     steps:
 
 
-      - name: Checkout code
+      - name: Checkout
 
         uses: actions/checkout@v4
+
 
         with:
 
@@ -118,7 +132,8 @@ jobs:
 
 
 
-      - name: SonarCloud Scan
+      - name: SonarCloud Analysis
+
 
         uses: SonarSource/sonarcloud-github-action@v2
 
@@ -150,24 +165,28 @@ jobs:
 
 
 # =====================================================
-# Promote Images Dev ACR -> Prod ACR
+# Promote Images
 # =====================================================
+
 
   promote-images:
 
 
-    name: Promote Images To Production ACR
+
+    name: Import Images Into Production ACR
+
 
 
     runs-on: ubuntu-latest
+
 
 
     needs: sonarcloud
 
 
 
-
     steps:
+
 
 
       - name: Azure Login
@@ -189,17 +208,60 @@ jobs:
 
 
 
+
       - name: Debug Variables
 
 
         run: |
 
 
-          echo "Image tag: ${{ github.event.inputs.image_tag }}"
+          echo "================================"
 
-          echo "Source ACR: ${{ env.DEV_ACR_LOGIN_SERVER }}"
+          echo "IMAGE TAG: ${{ github.event.inputs.image_tag }}"
 
-          echo "Target ACR: ${{ env.ACR_NAME }}"
+          echo "DEV ACR: netflixappdevacr.azurecr.io"
+
+          echo "PROD ACR: netflixappprodacr"
+
+          echo "================================"
+
+
+
+
+
+
+      - name: Check Dev Frontend Image Exists
+
+
+        run: |
+
+
+          az acr repository show-tags \
+
+          --name netflixappdevacr \
+
+          --repository netflix-web \
+
+          --output table
+
+
+
+
+
+
+      - name: Check Dev API Image Exists
+
+
+        run: |
+
+
+          az acr repository show-tags \
+
+          --name netflixappdevacr \
+
+          --repository netflix-api \
+
+          --output table
 
 
 
@@ -214,9 +276,9 @@ jobs:
 
           az acr import \
 
-          --name ${{ env.ACR_NAME }} \
+          --name netflixappprodacr \
 
-          --source ${{ env.DEV_ACR_LOGIN_SERVER }}/netflix-web:${{ github.event.inputs.image_tag }} \
+          --source netflixappdevacr.azurecr.io/netflix-web:${{ github.event.inputs.image_tag }} \
 
           --image netflix-web:${{ github.event.inputs.image_tag }} \
 
@@ -235,13 +297,14 @@ jobs:
 
           az acr import \
 
-          --name ${{ env.ACR_NAME }} \
+          --name netflixappprodacr \
 
-          --source ${{ env.DEV_ACR_LOGIN_SERVER }}/netflix-api:${{ github.event.inputs.image_tag }} \
+          --source netflixappdevacr.azurecr.io/netflix-api:${{ github.event.inputs.image_tag }} \
 
           --image netflix-api:${{ github.event.inputs.image_tag }} \
 
           --force
+
 
 
 
@@ -254,7 +317,8 @@ jobs:
         run: |
 
 
-          az acr login --name ${{ env.ACR_NAME }}
+          az acr login --name netflixappprodacr
+
 
 
 
@@ -270,13 +334,15 @@ jobs:
         with:
 
 
-          image-ref: ${{ env.ACR_LOGIN_SERVER }}/netflix-web:${{ github.event.inputs.image_tag }}
+          image-ref: netflixappprodacr.azurecr.io/netflix-web:${{ github.event.inputs.image_tag }}
 
 
           format: table
 
 
           severity: CRITICAL,HIGH
+
+
 
 
 
@@ -291,7 +357,7 @@ jobs:
         with:
 
 
-          image-ref: ${{ env.ACR_LOGIN_SERVER }}/netflix-api:${{ github.event.inputs.image_tag }}
+          image-ref: netflixappprodacr.azurecr.io/netflix-api:${{ github.event.inputs.image_tag }}
 
 
           format: table
@@ -306,10 +372,12 @@ jobs:
 
 
 # =====================================================
-# Deploy To Production AKS
+# Deploy AKS
 # =====================================================
 
+
   deploy-prod:
+
 
 
     name: Deploy Production AKS
@@ -321,7 +389,9 @@ jobs:
     needs: promote-images
 
 
+
     environment: production
+
 
 
 
@@ -329,7 +399,8 @@ jobs:
     steps:
 
 
-      - name: Checkout code
+
+      - name: Checkout
 
 
         uses: actions/checkout@v4
@@ -359,7 +430,6 @@ jobs:
 
 
 
-
       - name: Get AKS Credentials
 
 
@@ -368,11 +438,12 @@ jobs:
 
           az aks get-credentials \
 
-          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+          --resource-group netflix-app-prod-rg \
 
-          --name ${{ env.AKS_CLUSTER_NAME }} \
+          --name netflix-app-prod-aks \
 
           --overwrite-existing
+
 
 
 
@@ -384,7 +455,7 @@ jobs:
         run: |
 
 
-          kubectl create namespace ${{ env.NAMESPACE }} \
+          kubectl create namespace netflix-prod \
 
           --dry-run=client -o yaml | kubectl apply -f -
 
@@ -393,7 +464,7 @@ jobs:
 
 
 
-      - name: Create Application Secrets
+      - name: Create Secrets
 
 
         run: |
@@ -401,7 +472,7 @@ jobs:
 
           kubectl create secret generic netflix-app-secrets \
 
-          --namespace=${{ env.NAMESPACE }} \
+          --namespace netflix-prod \
 
           --from-literal=TMDB_API_KEY=${{ secrets.TMDB_API_KEY }} \
 
@@ -412,38 +483,37 @@ jobs:
 
 
 
-      - name: Deploy Application
+      - name: Deploy Kubernetes
 
 
         run: |
 
 
-          IMAGE_TAG=${{ github.event.inputs.image_tag }}
-
-
-
           sed \
 
-          -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
+          -e "s|__ACR_LOGIN_SERVER__|netflixappprodacr.azurecr.io|g" \
 
-          -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
+          -e "s|__IMAGE_TAG__|${{ github.event.inputs.image_tag }}|g" \
 
           k8s/prod/deployment.yml | kubectl apply -f -
 
 
 
-          kubectl apply -f k8s/prod/service.yml -n ${{ env.NAMESPACE }}
-
-          kubectl apply -f k8s/prod/ingress.yml -n ${{ env.NAMESPACE }}
-
-          kubectl apply -f k8s/prod/hpa.yml -n ${{ env.NAMESPACE }}
+          kubectl apply -f k8s/prod/service.yml -n netflix-prod
 
 
+          kubectl apply -f k8s/prod/ingress.yml -n netflix-prod
+
+
+          kubectl apply -f k8s/prod/hpa.yml -n netflix-prod
 
 
 
 
-      - name: Wait For Rollout
+
+
+
+      - name: Rollout Status
 
 
         run: |
@@ -451,7 +521,7 @@ jobs:
 
           kubectl rollout status deployment/netflix-web \
 
-          -n ${{ env.NAMESPACE }} \
+          -n netflix-prod \
 
           --timeout=600s
 
@@ -459,7 +529,7 @@ jobs:
 
           kubectl rollout status deployment/netflix-api \
 
-          -n ${{ env.NAMESPACE }} \
+          -n netflix-prod \
 
           --timeout=600s
 
@@ -468,19 +538,24 @@ jobs:
 
 
 
-      - name: Verify Deployment
+
+      - name: Verify Production
 
 
         run: |
 
 
-          kubectl get deployments -n ${{ env.NAMESPACE }}
+          kubectl get deployments -n netflix-prod
 
-          kubectl get pods -n ${{ env.NAMESPACE }}
 
-          kubectl get services -n ${{ env.NAMESPACE }}
+          kubectl get pods -n netflix-prod
 
-          kubectl get ingress -n ${{ env.NAMESPACE }}
+
+          kubectl get services -n netflix-prod
+
+
+          kubectl get ingress -n netflix-prod
+
 
 
 
@@ -490,6 +565,7 @@ jobs:
 # =====================================================
 # Smoke Test
 # =====================================================
+
 
   smoke-test:
 
@@ -526,8 +602,7 @@ jobs:
 
 
 
-
-      - name: Get AKS Credentials
+      - name: Get AKS
 
 
         run: |
@@ -535,9 +610,9 @@ jobs:
 
           az aks get-credentials \
 
-          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+          --resource-group netflix-app-prod-rg \
 
-          --name ${{ env.AKS_CLUSTER_NAME }} \
+          --name netflix-app-prod-aks \
 
           --overwrite-existing
 
@@ -546,12 +621,13 @@ jobs:
 
 
 
-      - name: Check Pods
+      - name: Check Application
 
 
         run: |
 
 
-          kubectl get pods -n ${{ env.NAMESPACE }}
+          kubectl get pods -n netflix-prod
 
-          echo "✅ Production smoke test completed"
+
+          echo "Production deployment successful"
