@@ -1,220 +1,519 @@
 name: Blue/Green Deploy to Production
 
 # ============================================================
-# How it works:
-#   1. Determines the currently INACTIVE slot (blue or green)
-#   2. Deploys the new image to the inactive slot
-#   3. Waits for all pods in the new slot to be Ready
-#   4. Switches the service selectors to point to the new slot
-#      (zero-downtime cutover — existing connections drain first)
-#   5. On rollback: re-patches selectors back to the previous slot
+# Blue/Green Deployment
+#
+# Flow:
+# 1. Detect current active slot
+# 2. Deploy new version to inactive slot
+# 3. Wait until pods are healthy
+# 4. Switch service traffic
+# 5. Rollback available by switching back
+#
 # ============================================================
 
 on:
+
   workflow_dispatch:
+
     inputs:
+
       image_tag:
-        description: "Image tag to deploy (short SHA)"
+        description: "Image tag to deploy"
         required: true
         type: string
+
+
       action:
-        description: "Action to perform"
+        description: "Deployment action"
         required: true
         type: choice
+
         options:
-          - deploy-and-switch    # Deploy to inactive slot, then switch traffic
-          - switch-only          # Switch traffic without deploying (manual slot flip)
-          - rollback             # Switch traffic back to the previous slot
+          - deploy-and-switch
+          - switch-only
+          - rollback
+
+
       confirm:
-        description: "Type 'confirm' to proceed with production change"
+        description: "Type confirm to proceed"
         required: true
         type: string
 
+
+
 env:
-  ACR_LOGIN_SERVER: netflixappprodacr.azurecr.io
+
+  ACR_LOGIN_SERVER: netflixappprodacruks.azurecr.io
+
+  ACR_NAME: netflixappprodacruks
+
+
   AKS_CLUSTER_NAME: netflix-app-prod-aks
-  AKS_RESOURCE_GROUP: netflix-app-prod-rg
+
+  AKS_RESOURCE_GROUP: netflix-app-prod-rg-uks
+
+
   NAMESPACE: netflix-prod
 
+
+  FRONTEND_IMAGE: netflix-web
+
+  API_IMAGE: netflix-api
+
+
+
 permissions:
+
   id-token: write
   contents: read
 
+
+
 jobs:
-  # -------------------------------------------------------
-  # Gate: require explicit confirmation
-  # -------------------------------------------------------
+
+
+# ============================================================
+# Validate
+# ============================================================
+
+
   validate:
+
     name: Validate Request
+
     runs-on: ubuntu-latest
+
+
     steps:
-      - name: Check confirmation
-        if: github.event.inputs.confirm != 'confirm'
+
+
+      - name: Validate confirmation
+
         run: |
-          echo "::error::You must type 'confirm' to proceed."
-          exit 1
 
-  # -------------------------------------------------------
-  # Blue/Green Operation
-  # -------------------------------------------------------
-  blue-green:
-    name: Blue/Green (${{ github.event.inputs.action }})
-    runs-on: ubuntu-latest
-    needs: validate
-    environment: production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+          if [ "${{ github.event.inputs.confirm }}" != "confirm" ]
 
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          then
 
-      - name: Get AKS credentials
-        run: |
-          az aks get-credentials \
-            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-            --name ${{ env.AKS_CLUSTER_NAME }} \
-            --overwrite-existing
+            echo "Confirmation failed"
 
-      # -------------------------------------------------------
-      # Detect active and inactive slots
-      # -------------------------------------------------------
-      - name: Detect active slot
-        id: slots
-        run: |
-          ACTIVE=$(kubectl get service netflix-web-service \
-            -n ${{ env.NAMESPACE }} \
-            -o jsonpath='{.spec.selector.slot}' 2>/dev/null || echo "blue")
+            exit 1
 
-          if [ "$ACTIVE" = "blue" ]; then
-            INACTIVE="green"
-          else
-            INACTIVE="blue"
           fi
 
-          echo "active=$ACTIVE"     >> $GITHUB_OUTPUT
+
+          echo "Production change approved"
+
+
+
+# ============================================================
+# Blue Green Deployment
+# ============================================================
+
+
+  blue-green:
+
+
+    name: Blue Green Deployment
+
+
+    runs-on: ubuntu-latest
+
+
+    needs: validate
+
+
+    environment: production
+
+
+
+    steps:
+
+
+
+      - name: Checkout
+
+        uses: actions/checkout@v4
+
+
+
+
+
+      - name: Azure Login
+
+
+        uses: azure/login@v2
+
+
+        with:
+
+
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+
+
+
+
+      - name: Get AKS credentials
+
+
+        run: |
+
+
+          az aks get-credentials \
+
+          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+
+          --name ${{ env.AKS_CLUSTER_NAME }} \
+
+          --overwrite-existing
+
+
+
+
+
+# ============================================================
+# Create required Kubernetes resources
+# ============================================================
+
+
+      - name: Create Namespace
+
+
+        run: |
+
+
+          kubectl create namespace ${{ env.NAMESPACE }} \
+
+          --dry-run=client -o yaml | kubectl apply -f -
+
+
+
+
+
+      - name: Create ConfigMap
+
+
+        run: |
+
+
+          kubectl create configmap netflix-app-config \
+
+          --namespace ${{ env.NAMESPACE }} \
+
+          --from-literal=ENVIRONMENT=production \
+
+          --dry-run=client -o yaml | kubectl apply -f -
+
+
+
+
+
+      - name: Create Secrets
+
+
+        run: |
+
+
+          kubectl create secret generic netflix-app-secrets \
+
+          --namespace ${{ env.NAMESPACE }} \
+
+          --from-literal=TMDB_API_KEY=${{ secrets.TMDB_API_KEY }} \
+
+          --dry-run=client -o yaml | kubectl apply -f -
+
+
+
+
+
+# ============================================================
+# Detect Slot
+# ============================================================
+
+
+      - name: Detect active slot
+
+
+        id: slots
+
+
+        run: |
+
+
+          ACTIVE=$(kubectl get svc netflix-web-service \
+
+          -n ${{ env.NAMESPACE }} \
+
+          -o jsonpath='{.spec.selector.slot}' 2>/dev/null)
+
+
+
+          if [ -z "$ACTIVE" ]
+
+          then
+
+            ACTIVE="blue"
+
+          fi
+
+
+
+          if [ "$ACTIVE" = "blue" ]
+
+          then
+
+            INACTIVE="green"
+
+          else
+
+            INACTIVE="blue"
+
+          fi
+
+
+
+          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+
           echo "inactive=$INACTIVE" >> $GITHUB_OUTPUT
-          echo "Active slot:   $ACTIVE"
+
+
+
+          echo "Active slot: $ACTIVE"
+
           echo "Inactive slot: $INACTIVE"
 
-      # -------------------------------------------------------
-      # Deploy new image to inactive slot
-      # -------------------------------------------------------
-      - name: Deploy to inactive slot (${{ steps.slots.outputs.inactive }})
+
+
+
+
+# ============================================================
+# Deploy inactive slot
+# ============================================================
+
+
+      - name: Deploy inactive slot
+
+
         if: github.event.inputs.action == 'deploy-and-switch'
+
+
         run: |
-          IMAGE_TAG=${{ github.event.inputs.image_tag }}
+
+
           SLOT=${{ steps.slots.outputs.inactive }}
 
-          sed -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
-              -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
-              k8s/prod/blue-green/deployment-${SLOT}.yml | kubectl apply -f -
 
-          echo "Deployed image tag ${IMAGE_TAG} to ${SLOT} slot."
+          TAG=${{ github.event.inputs.image_tag }}
 
-      - name: Wait for inactive slot to be Ready
+
+
+          sed \
+
+          -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
+
+          -e "s|__IMAGE_TAG__|${TAG}|g" \
+
+          k8s/prod/blue-green/deployment-${SLOT}.yml \
+
+          | kubectl apply -f -
+
+
+
+
+
+# ============================================================
+# Wait for pods
+# ============================================================
+
+
+      - name: Wait for rollout
+
+
         if: github.event.inputs.action == 'deploy-and-switch'
+
+
         run: |
+
+
           SLOT=${{ steps.slots.outputs.inactive }}
+
+
 
           kubectl rollout status deployment/netflix-web-${SLOT} \
-            -n ${{ env.NAMESPACE }} --timeout=600s
+
+          -n ${{ env.NAMESPACE }} \
+
+          --timeout=600s
+
+
+
           kubectl rollout status deployment/netflix-api-${SLOT} \
-            -n ${{ env.NAMESPACE }} --timeout=600s
 
-          echo "All pods in ${SLOT} slot are Ready."
+          -n ${{ env.NAMESPACE }} \
 
-      # -------------------------------------------------------
-      # Switch traffic to the target slot
-      # -------------------------------------------------------
-      - name: Switch traffic to ${{ steps.slots.outputs.inactive }}
+          --timeout=600s
+
+
+
+
+
+# ============================================================
+# Switch traffic
+# ============================================================
+
+
+      - name: Switch traffic
+
+
         if: github.event.inputs.action == 'deploy-and-switch' || github.event.inputs.action == 'switch-only'
+
+
         run: |
+
+
           TARGET=${{ steps.slots.outputs.inactive }}
 
-          # Patch web service
+
+
           kubectl patch service netflix-web-service \
-            -n ${{ env.NAMESPACE }} \
-            --type=merge \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"${TARGET}\"}},\"metadata\":{\"annotations\":{\"blue-green/active-slot\":\"${TARGET}\"}}}"
 
-          # Patch API service
+          -n ${{ env.NAMESPACE }} \
+
+          --type merge \
+
+          -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"${TARGET}\"}}}"
+
+
+
+
+
           kubectl patch service netflix-api-service \
-            -n ${{ env.NAMESPACE }} \
-            --type=merge \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"${TARGET}\"}},\"metadata\":{\"annotations\":{\"blue-green/active-slot\":\"${TARGET}\"}}}"
 
-          echo "Traffic switched to ${TARGET} slot."
-          echo "Previous active slot (${{ steps.slots.outputs.active }}) is now idle — available for rollback."
+          -n ${{ env.NAMESPACE }} \
 
-      # -------------------------------------------------------
-      # Rollback: switch back to the currently active (old) slot
-      # -------------------------------------------------------
-      - name: Rollback to ${{ steps.slots.outputs.active }}
+          --type merge \
+
+          -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"${TARGET}\"}}}"
+
+
+
+          echo "Traffic switched to ${TARGET}"
+
+
+
+
+
+# ============================================================
+# Rollback
+# ============================================================
+
+
+      - name: Rollback
+
+
         if: github.event.inputs.action == 'rollback'
+
+
         run: |
-          # On rollback the "active" slot IS the old stable slot we want to restore
-          # and "inactive" is the broken new slot we want to abandon.
-          # We simply switch selectors back to "active".
-          TARGET=${{ steps.slots.outputs.active }}
+
+
+          CURRENT=$(kubectl get svc netflix-web-service \
+
+          -n ${{ env.NAMESPACE }} \
+
+          -o jsonpath='{.spec.selector.slot}')
+
+
+
+          if [ "$CURRENT" = "blue" ]
+
+          then
+
+            TARGET="green"
+
+          else
+
+            TARGET="blue"
+
+          fi
+
+
+
 
           kubectl patch service netflix-web-service \
-            -n ${{ env.NAMESPACE }} \
-            --type=merge \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"${TARGET}\"}},\"metadata\":{\"annotations\":{\"blue-green/active-slot\":\"${TARGET}\"}}}"
+
+          -n ${{ env.NAMESPACE }} \
+
+          --type merge \
+
+          -p "{\"spec\":{\"selector\":{\"app\":\"netflix-web\",\"slot\":\"${TARGET}\"}}}"
+
+
+
+
 
           kubectl patch service netflix-api-service \
-            -n ${{ env.NAMESPACE }} \
-            --type=merge \
-            -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"${TARGET}\"}},\"metadata\":{\"annotations\":{\"blue-green/active-slot\":\"${TARGET}\"}}}"
 
-          echo "::warning::Rolled back. Traffic is now on ${TARGET} slot."
+          -n ${{ env.NAMESPACE }} \
 
-      # -------------------------------------------------------
-      # Verification
-      # -------------------------------------------------------
-      - name: Verify deployment state
+          --type merge \
+
+          -p "{\"spec\":{\"selector\":{\"app\":\"netflix-api\",\"slot\":\"${TARGET}\"}}}"
+
+
+
+          echo "Rolled back to ${TARGET}"
+
+
+
+
+
+# ============================================================
+# Verify
+# ============================================================
+
+
+      - name: Verify
+
+
         run: |
-          echo "=== Active Slot ==="
-          kubectl get service netflix-web-service -n ${{ env.NAMESPACE }} \
-            -o jsonpath='Web slot: {.spec.selector.slot}{"\n"}'
-          kubectl get service netflix-api-service -n ${{ env.NAMESPACE }} \
-            -o jsonpath='API slot: {.spec.selector.slot}{"\n"}'
+
+
+          echo "Current traffic slot:"
+
+
+          kubectl get svc netflix-web-service \
+
+          -n ${{ env.NAMESPACE }} \
+
+          -o jsonpath='{.spec.selector.slot}'
+
+
+
+
           echo ""
-          echo "=== Pod Status ==="
-          kubectl get pods -n ${{ env.NAMESPACE }} \
-            -l app=netflix-web --show-labels
-          kubectl get pods -n ${{ env.NAMESPACE }} \
-            -l app=netflix-api --show-labels
 
-  # -------------------------------------------------------
-  # Notification
-  # -------------------------------------------------------
-  notify:
-    name: Send Notification
-    runs-on: ubuntu-latest
-    needs: blue-green
-    if: always()
-    steps:
-      - name: Send email
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.SMTP_USERNAME }}
-          password: ${{ secrets.SMTP_PASSWORD }}
-          subject: "${{ needs.blue-green.result == 'success' && '✅' || '❌' }} Blue/Green ${{ github.event.inputs.action }} - Netflix Production"
-          to: ${{ secrets.SMTP_USERNAME }}
-          from: Netflix CI/CD <${{ secrets.SMTP_USERNAME }}>
-          body: |
-            Blue/Green Deployment ${{ needs.blue-green.result == 'success' && 'Succeeded' || 'FAILED' }}
 
-            Action:    ${{ github.event.inputs.action }}
-            Image Tag: ${{ github.event.inputs.image_tag }}
-            Actor:     ${{ github.actor }}
+          kubectl get pods \
 
-            Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          -n ${{ env.NAMESPACE }} \
+
+          -l app=netflix-web \
+
+          --show-labels
+
+
+
+          kubectl get pods \
+
+          -n ${{ env.NAMESPACE }} \
+
+          -l app=netflix-api \
+
+          --show-labels
