@@ -3,6 +3,7 @@ name: Deploy Monitoring Stack
 on:
   workflow_dispatch:
     inputs:
+
       environment:
         description: "Target environment"
         required: true
@@ -20,8 +21,8 @@ env:
   AKS_CLUSTER_NAME_PROD: netflix-app-prod-aks
   AKS_RESOURCE_GROUP_PROD: netflix-app-prod-rg-uks
 
-  MONITORING_NAMESPACE: monitoring
 
+  MONITORING_NAMESPACE: monitoring
 
 
 permissions:
@@ -34,28 +35,29 @@ permissions:
 jobs:
 
 
-# ==================================================
+# ==========================================
 # Deploy Monitoring Stack
-# ==================================================
+# ==========================================
 
   deploy-monitoring:
 
 
-    name: Deploy Prometheus + Grafana
+    name: Deploy kube-prometheus-stack
+
 
     runs-on: ubuntu-latest
 
-    environment: ${{ inputs.environment }}
 
+    environment: ${{ inputs.environment }}
 
 
     steps:
 
 
 
-# --------------------------------------------------
+# ------------------------------------------
 # Checkout
-# --------------------------------------------------
+# ------------------------------------------
 
       - name: Checkout code
 
@@ -64,12 +66,11 @@ jobs:
 
 
 
+# ------------------------------------------
+# Azure Login
+# ------------------------------------------
 
-# --------------------------------------------------
-# Azure Login OIDC
-# --------------------------------------------------
-
-      - name: Azure Login
+      - name: Azure Login OIDC
 
         uses: azure/login@v2
 
@@ -85,20 +86,23 @@ jobs:
 
 
 
-
-# --------------------------------------------------
+# ------------------------------------------
 # Select AKS Cluster
-# --------------------------------------------------
+# ------------------------------------------
 
       - name: Set cluster variables
 
         id: cluster
 
+        shell: bash
+
         run: |
+
 
           if [ "${{ inputs.environment }}" = "production" ]
 
           then
+
 
             echo "cluster_name=${{ env.AKS_CLUSTER_NAME_PROD }}" >> $GITHUB_OUTPUT
 
@@ -119,32 +123,47 @@ jobs:
 
 
 
+# ------------------------------------------
+# Debug
+# ------------------------------------------
 
-# --------------------------------------------------
-# Get AKS Credentials
-# --------------------------------------------------
+      - name: Show selected cluster
 
-      - name: Get AKS credentials
+        run: |
+
+
+          echo "AKS Cluster:"
+          echo "${{ steps.cluster.outputs.cluster_name }}"
+
+
+          echo "Resource Group:"
+          echo "${{ steps.cluster.outputs.resource_group }}"
+
+
+
+
+
+# ------------------------------------------
+# AKS Credentials
+# ------------------------------------------
+
+      - name: Get AKS Credentials
 
         run: |
 
 
           az aks get-credentials \
-
-          --resource-group ${{ steps.cluster.outputs.resource_group }} \
-
-          --name ${{ steps.cluster.outputs.cluster_name }} \
-
-          --overwrite-existing
+            --resource-group "${{ steps.cluster.outputs.resource_group }}" \
+            --name "${{ steps.cluster.outputs.cluster_name }}" \
+            --overwrite-existing
 
 
 
 
 
-
-# --------------------------------------------------
+# ------------------------------------------
 # Install Helm
-# --------------------------------------------------
+# ------------------------------------------
 
       - name: Install Helm
 
@@ -155,35 +174,33 @@ jobs:
 
 
 
-# --------------------------------------------------
-# Create Monitoring Namespace
-# --------------------------------------------------
+# ------------------------------------------
+# Create Namespace
+# ------------------------------------------
 
-      - name: Create monitoring namespace
+      - name: Create Monitoring Namespace
 
         run: |
 
 
           kubectl create namespace ${{ env.MONITORING_NAMESPACE }} \
-
-          --dry-run=client -o yaml | kubectl apply -f -
-
-
+          --dry-run=client \
+          -o yaml | kubectl apply -f -
 
 
 
 
-# --------------------------------------------------
-# Add Prometheus Repo
-# --------------------------------------------------
 
-      - name: Add Prometheus Helm repo
+# ------------------------------------------
+# Add Helm Repo
+# ------------------------------------------
+
+      - name: Add Prometheus Helm Repo
 
         run: |
 
 
           helm repo add prometheus-community \
-
           https://prometheus-community.github.io/helm-charts
 
 
@@ -193,10 +210,9 @@ jobs:
 
 
 
-
-# --------------------------------------------------
-# Deploy kube-prometheus-stack
-# --------------------------------------------------
+# ------------------------------------------
+# Deploy Prometheus + Grafana
+# ------------------------------------------
 
       - name: Deploy kube-prometheus-stack
 
@@ -204,155 +220,96 @@ jobs:
 
 
           helm upgrade --install kube-prometheus-stack \
-
           prometheus-community/kube-prometheus-stack \
-
           --namespace ${{ env.MONITORING_NAMESPACE }} \
-
+          --create-namespace \
           --values k8s/monitoring/helm-values.yml \
-
           --set grafana.adminPassword=${{ secrets.GRAFANA_ADMIN_PASSWORD }} \
-
-          --set grafana.service.type=LoadBalancer \
-
           --atomic \
-
-          --timeout 15m \
-
-          --cleanup-on-fail
+          --wait \
+          --timeout 15m
 
 
 
 
 
-
-# --------------------------------------------------
+# ------------------------------------------
 # Deploy Dashboard ConfigMap
-# --------------------------------------------------
+# ------------------------------------------
 
-      - name: Deploy Netflix Grafana Dashboard
-
-        run: |
-
-
-          kubectl apply -f k8s/monitoring/netflix-dashboard-cm.yml
-
-
-
-
-
-
-# --------------------------------------------------
-# Wait For Components
-# --------------------------------------------------
-
-      - name: Wait for Grafana
+      - name: Deploy Netflix Dashboard
 
         run: |
 
 
-          kubectl rollout status deployment/kube-prometheus-stack-grafana \
-
-          -n ${{ env.MONITORING_NAMESPACE }} \
-
-          --timeout=300s
-
-
-
-
-
-      - name: Wait for Prometheus
-
-        run: |
-
-
-          kubectl rollout status statefulset/prometheus-kube-prometheus-stack-prometheus \
-
-          -n ${{ env.MONITORING_NAMESPACE }} \
-
-          --timeout=300s
+          kubectl apply \
+          -f k8s/monitoring/netflix-dashboard-cm.yml \
+          -n ${{ env.MONITORING_NAMESPACE }}
 
 
 
 
 
 
-# --------------------------------------------------
-# Display Status
-# --------------------------------------------------
 
-      - name: Monitoring Status
+# ------------------------------------------
+# Verify Pods
+# ------------------------------------------
+
+      - name: Check Monitoring Pods
 
         run: |
-
-
-          echo "=============================="
-
-          echo "Monitoring Pods"
-
-          echo "=============================="
 
 
           kubectl get pods \
-
           -n ${{ env.MONITORING_NAMESPACE }}
 
 
 
-          echo ""
 
-          echo "=============================="
 
-          echo "Monitoring Services"
 
-          echo "=============================="
+# ------------------------------------------
+# Display Services
+# ------------------------------------------
+
+      - name: Display Monitoring Services
+
+        run: |
+
+
+          echo "===== SERVICES ====="
 
 
           kubectl get svc \
-
           -n ${{ env.MONITORING_NAMESPACE }}
 
 
 
 
 
-
-# --------------------------------------------------
+# ------------------------------------------
 # Get Grafana URL
-# --------------------------------------------------
+# ------------------------------------------
 
       - name: Display Grafana Endpoint
 
         run: |
 
 
-          echo "Waiting for Grafana external IP..."
-
-
-          sleep 30
-
-
-
           GRAFANA_IP=$(kubectl get svc kube-prometheus-stack-grafana \
-
           -n ${{ env.MONITORING_NAMESPACE }} \
-
           -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
 
-
           echo ""
 
-          echo "===================================="
+          echo "================================"
 
-          echo "Grafana URL"
-
-          echo "http://${GRAFANA_IP}"
-
-          echo ""
+          echo "Grafana URL: http://${GRAFANA_IP}"
 
           echo "Username: admin"
 
-          echo "Password: configured GitHub secret"
+          echo "Password: your GitHub secret GRAFANA_ADMIN_PASSWORD"
 
-          echo "===================================="
+          echo "================================"
