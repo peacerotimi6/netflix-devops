@@ -4,7 +4,6 @@ kind: Deployment
 metadata:
   name: netflix-web
   namespace: netflix-prod
-
   labels:
     app: netflix-web
     environment: prod
@@ -13,42 +12,29 @@ metadata:
     checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by CI/CD pipeline"
     checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp directories; readOnlyRootFilesystem disabled"
 
-
 spec:
-
   replicas: 3
 
   progressDeadlineSeconds: 900
 
-
   selector:
-
     matchLabels:
       app: netflix-web
 
 
   strategy:
-
     type: RollingUpdate
-
     rollingUpdate:
-
       maxSurge: 1
-
       maxUnavailable: 0
-
 
 
   template:
 
     metadata:
-
       labels:
-
         app: netflix-web
-
         environment: prod
-
 
 
     spec:
@@ -59,17 +45,14 @@ spec:
       securityContext:
 
         runAsNonRoot: true
-
         runAsUser: 10001
 
         seccompProfile:
-
           type: RuntimeDefault
 
 
 
       containers:
-
 
       - name: netflix-web
 
@@ -80,40 +63,31 @@ spec:
         imagePullPolicy: Always
 
 
-
         ports:
 
         - containerPort: 8080
-
           protocol: TCP
-
 
 
         envFrom:
 
         - configMapRef:
-
             name: netflix-app-config
 
 
 
         resources:
 
-
           requests:
 
             cpu: "200m"
-
             memory: "256Mi"
-
 
 
           limits:
 
             cpu: "500m"
-
             memory: "512Mi"
-
 
 
 
@@ -132,7 +106,6 @@ spec:
             drop:
 
             - ALL
-
 
 
 
@@ -155,7 +128,6 @@ spec:
 
 
 
-
         readinessProbe:
 
           httpGet:
@@ -175,14 +147,11 @@ spec:
 
 
 
-
       restartPolicy: Always
 
 
 
-
       topologySpreadConstraints:
-
 
       - maxSkew: 1
 
@@ -191,7 +160,6 @@ spec:
         whenUnsatisfiable: DoNotSchedule
 
         nodeTaintsPolicy: Honor
-
 
         labelSelector:
 
@@ -202,8 +170,8 @@ spec:
 
 
 
-
 ---
+
 apiVersion: apps/v1
 kind: Deployment
 
@@ -222,6 +190,7 @@ metadata:
     environment: prod
 
 
+
   annotations:
 
     checkov.io/skip1: "CKV_K8S_43=Image digest pinning not used; tags are managed and rotated by CI/CD pipeline"
@@ -232,9 +201,7 @@ metadata:
 
 
 
-
 spec:
-
 
   replicas: 2
 
@@ -245,53 +212,38 @@ spec:
 
   selector:
 
-
     matchLabels:
-
 
       app: netflix-api
 
 
 
-
   strategy:
-
 
     type: RollingUpdate
 
-
     rollingUpdate:
-
 
       maxSurge: 1
 
-
       maxUnavailable: 0
-
 
 
 
   template:
 
 
-
     metadata:
-
 
       labels:
 
-
         app: netflix-api
-
 
         environment: prod
 
 
 
-
-
     spec:
-
 
 
       automountServiceAccountToken: false
@@ -300,24 +252,18 @@ spec:
 
       securityContext:
 
-
         runAsNonRoot: true
-
 
         runAsUser: 10001
 
-
         seccompProfile:
-
 
           type: RuntimeDefault
 
 
 
 
-
       containers:
-
 
 
       - name: netflix-api
@@ -332,9 +278,7 @@ spec:
 
 
 
-
         ports:
-
 
         - containerPort: 8080
 
@@ -343,16 +287,12 @@ spec:
 
 
 
-
         envFrom:
-
 
 
         - secretRef:
 
-
             name: netflix-app-secrets
-
 
 
 
@@ -360,29 +300,19 @@ spec:
         resources:
 
 
-
           requests:
 
-
-
             cpu: "200m"
-
 
             memory: "1Gi"
 
 
 
-
-
           limits:
-
-
 
             cpu: "1000m"
 
-
             memory: "2Gi"
-
 
 
 
@@ -390,33 +320,20 @@ spec:
         securityContext:
 
 
-
           allowPrivilegeEscalation: false
-
-
 
           readOnlyRootFilesystem: false
 
-
-
           runAsNonRoot: true
-
-
 
           runAsUser: 10001
 
 
-
           capabilities:
-
-
 
             drop:
 
-
-
             - ALL
-
 
 
 
@@ -424,29 +341,18 @@ spec:
         startupProbe:
 
 
-
           httpGet:
 
-
-
             path: /
-
 
             port: 8080
 
 
-
           failureThreshold: 30
-
-
 
           periodSeconds: 10
 
-
-
           timeoutSeconds: 5
-
-
 
 
 
@@ -454,34 +360,20 @@ spec:
         livenessProbe:
 
 
-
           httpGet:
 
-
-
             path: /
-
-
 
             port: 8080
 
 
-
           initialDelaySeconds: 5
-
-
 
           periodSeconds: 30
 
-
-
           timeoutSeconds: 5
 
-
-
           failureThreshold: 3
-
-
 
 
 
@@ -489,29 +381,17 @@ spec:
         readinessProbe:
 
 
-
           httpGet:
 
-
-
             path: /
-
-
 
             port: 8080
 
 
-
           initialDelaySeconds: 5
-
-
 
           periodSeconds: 10
 
-
-
           timeoutSeconds: 5
-
-
 
           failureThreshold: 3
