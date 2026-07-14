@@ -310,4 +310,3 @@ jobs:
           kubectl get pods \
           -n ${{ env.NAMESPACE }} \
           --show-labels
-#
