@@ -22,7 +22,7 @@ metadata:
 
 spec:
 
-  replicas: 3
+  replicas: 1
 
   progressDeadlineSeconds: 900
 
@@ -254,7 +254,7 @@ metadata:
 spec:
 
 
-  replicas: 2
+  replicas: 1
 
 
   progressDeadlineSeconds: 900
