@@ -5,7 +5,7 @@ location            = "eastus"
 acr_name            = "netflixappdevacr"
 aks_cluster_name    = "netflix-app-dev-aks"
 dns_prefix          = "netflix-dev"
-kubernetes_version  = "1.33"
+kubernetes_version  = "1.32.7"
 key_vault_name      = "netflix-dev-kv"
 
 # Networking
