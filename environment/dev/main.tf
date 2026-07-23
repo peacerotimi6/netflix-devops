@@ -11,14 +11,14 @@ terraform {
     }
   }
   backend "azurerm" {
-    resource_group_name  = "terraform-state-rg"
-    storage_account_name = "tfstatenetflix001"
-    container_name       = "tfstate"
-    key                  = "dev.terraform.tfstate"
-    # Use managed identity for state access instead of storage keys
-    use_azuread_auth = true
-  }
+  resource_group_name  = "netflix-terraform-state-rg"
+  storage_account_name = "netflixterraformstate001"
+  container_name       = "tfstate"
+  key                  = "dev.terraform.tfstate"
+  use_azuread_auth     = true
 }
+  }
+
 
 provider "azurerm" {
   features {
