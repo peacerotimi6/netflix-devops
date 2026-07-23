@@ -1,25 +1,35 @@
 # Production Environment Configuration
 
 resource_group_name = "netflix-app-prod-rg"
-location            = "uksouth"
-acr_name            = "netflixappprodacr"
+location            = "eastus"
+
+acr_name            = "netflixappprodacruks"
+
 aks_cluster_name    = "netflix-app-prod-aks"
 dns_prefix          = "netflix-prod"
-kubernetes_version  = "1.33"
-key_vault_name      = "netflix-prod-kv-v2"
+
+kubernetes_version  = "1.36.2"
+
+key_vault_name      ="netflix-prod-kv-v3"
+
 
 # Networking
+
 vnet_name          = "netflix-prod-vnet"
 vnet_address_space = "10.1.0.0/16"
 
-# System node pool — zone 1
+
+# System node pool
+
 system_node_count   = 1
 system_node_vm_size = "Standard_D2as_v7"
 system_min_count    = 1
 system_max_count    = 3
 
-# App node pool — zone 2
-app_node_count   = 2
+
+# App node pool
+
+app_node_count   = 1
 app_node_vm_size = "Standard_D2as_v7"
-app_min_count    = 2
-app_max_count    = 6
+app_min_count    = 1
+app_max_count    = 3
