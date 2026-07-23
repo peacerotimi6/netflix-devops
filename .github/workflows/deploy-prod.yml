@@ -1,6 +1,8 @@
 name: Deploy to Production
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       image_tag:
@@ -24,7 +26,7 @@ env:
 
 
   AKS_CLUSTER_NAME: netflix-app-prod-aks
-  AKS_RESOURCE_GROUP: netflix-app-prod-rg-uks
+  AKS_RESOURCE_GROUP: netflix-app-prod-rg
 
 
   NAMESPACE: netflix-prod
