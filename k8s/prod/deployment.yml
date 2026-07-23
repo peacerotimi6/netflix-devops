@@ -13,7 +13,7 @@ metadata:
     checkov.io/skip2: "CKV_K8S_22=Nginx requires write access to temp directories; readOnlyRootFilesystem disabled"
 
 spec:
-  replicas: 3
+  replicas: 1
 
   progressDeadlineSeconds: 900
 
@@ -203,7 +203,7 @@ metadata:
 
 spec:
 
-  replicas: 2
+  replicas: 1
 
 
   progressDeadlineSeconds: 900
