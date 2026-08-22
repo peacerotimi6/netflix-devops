@@ -7,22 +7,24 @@ metadata:
     app: netflix-web
     environment: prod
   annotations:
-    # cert-manager issues a Let's Encrypt certificate automatically
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/rate-limit: "100"
     nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+
 spec:
   ingressClassName: nginx
+
   tls:
     - hosts:
-        - adedayo.shop
-        - www.adedayo.shop
-      secretName: adedayo-shop-tls   # cert-manager stores the cert here
+        - rotimi.shop
+        - www.rotimi.shop
+      secretName: rotimi-shop-tls
+
   rules:
-    - host: adedayo.shop
+    - host: rotimi.shop
       http:
         paths:
           - path: /
@@ -32,6 +34,7 @@ spec:
                 name: netflix-web-service
                 port:
                   number: 80
+
           - path: /api
             pathType: Prefix
             backend:
@@ -39,7 +42,8 @@ spec:
                 name: netflix-api-service
                 port:
                   number: 80
-    - host: www.adedayo.shop
+
+    - host: www.rotimi.shop
       http:
         paths:
           - path: /
@@ -47,5 +51,13 @@ spec:
             backend:
               service:
                 name: netflix-web-service
+                port:
+                  number: 80
+
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: netflix-api-service
                 port:
                   number: 80
