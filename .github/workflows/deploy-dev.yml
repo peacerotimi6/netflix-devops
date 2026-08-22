@@ -2,10 +2,15 @@ name: Deploy to Dev
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
   workflow_dispatch:
 
+
+# ======================================================
+# ENVIRONMENT VARIABLES
+# ======================================================
 
 env:
   ACR_NAME: netflixappdevacr
@@ -20,16 +25,25 @@ env:
   API_IMAGE: netflix-api
 
 
+# ======================================================
+# PERMISSIONS
+# ======================================================
+
 permissions:
   id-token: write
   contents: read
 
 
+# ======================================================
+# JOBS
+# ======================================================
+
 jobs:
 
-# ======================================================
-# SONARCLOUD ANALYSIS
-# ======================================================
+
+  # ======================================================
+  # SONARCLOUD ANALYSIS
+  # ======================================================
 
   sonarcloud-analysis:
 
@@ -37,504 +51,530 @@ jobs:
 
     runs-on: ubuntu-latest
 
-
     steps:
 
       - name: Checkout code
         uses: actions/checkout@v4
-
         with:
           fetch-depth: 0
 
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
-
         with:
           java-version: "21"
           distribution: "temurin"
 
 
       - name: Verify Java Version
-        run: java -version
+        run: |
+          java -version
 
 
       - name: SonarCloud Scan
-
         uses: SonarSource/sonarcloud-github-action@v3
-
         with:
-
           projectBaseDir: ./app
-
           args: >
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
 
-
         env:
-
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-# ======================================================
-# BUILD AND PUSH DOCKER IMAGES
-# ======================================================
 
+
+  # ======================================================
+  # BUILD AND PUSH DOCKER IMAGES
+  # ======================================================
 
   build-and-push:
-
 
     name: Build & Push Images To ACR
 
     runs-on: ubuntu-latest
 
-
-    needs: sonarcloud-analysis
-
+    needs:
+      - sonarcloud-analysis
 
     outputs:
-
       image_tag: ${{ steps.meta.outputs.image_tag }}
-
-
 
     steps:
 
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
 
       - name: Checkout code
-
         uses: actions/checkout@v4
 
 
+      # --------------------------------------------------
+      # Generate Image Tag
+      # --------------------------------------------------
 
       - name: Generate Image Tag
-
         id: meta
-
+        shell: bash
         run: |
+          IMAGE_TAG=$(echo "$GITHUB_SHA" | cut -c1-7)
 
-          echo "image_tag=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+          echo "Docker image tag: $IMAGE_TAG"
 
 
+      # --------------------------------------------------
+      # Azure Login
+      # --------------------------------------------------
 
       - name: Azure Login OIDC
-
         uses: azure/login@v2
-
-
         with:
-
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
-
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 
+      # --------------------------------------------------
+      # Verify ACR
+      # --------------------------------------------------
 
       - name: Verify ACR Exists
-
+        shell: bash
         run: |
-
           az acr show \
-          --name ${{ env.ACR_NAME }}
+            --name "${{ env.ACR_NAME }}"
 
 
+      # --------------------------------------------------
+      # Login To ACR
+      # --------------------------------------------------
 
       - name: Login To ACR
-
+        shell: bash
         run: |
-
           az acr login \
-          --name ${{ env.ACR_NAME }}
+            --name "${{ env.ACR_NAME }}"
 
 
-
-# ---------------- FRONTEND ----------------
-
+      # ==================================================
+      # FRONTEND
+      # ==================================================
 
       - name: Build Frontend Image
-
-
         working-directory: ./app
-
-
+        shell: bash
         run: |
 
-
           docker build \
-          -f Dockerfile.frontend \
-          --build-arg VITE_APP_TMDB_V3_API_KEY=${{ secrets.TMDB_API_KEY }} \
-          -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }} \
-          -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest \
-          .
+            -f Dockerfile.frontend \
+            --build-arg VITE_APP_TMDB_V3_API_KEY="${{ secrets.TMDB_API_KEY }}" \
+            -t "${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}" \
+            -t "${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest" \
+            .
 
 
-
-          docker push \
-          ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-
-
+      - name: Push Frontend Image
+        shell: bash
+        run: |
 
           docker push \
-          ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest
+            "${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}"
+
+          docker push \
+            "${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:latest"
 
 
-
-
-# ---------------- API ----------------
-
+      # ==================================================
+      # API
+      # ==================================================
 
       - name: Build API Image
-
-
         working-directory: ./app
-
-
+        shell: bash
         run: |
 
-
           docker build \
-          -f Dockerfile \
-          -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }} \
-          -t ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest \
-          .
+            -f Dockerfile \
+            -t "${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}" \
+            -t "${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest" \
+            .
 
 
-
-          docker push \
-          ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-
-
+      - name: Push API Image
+        shell: bash
+        run: |
 
           docker push \
-          ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest
+            "${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}"
+
+          docker push \
+            "${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:latest"
 
 
-
-
-# ---------------- SECURITY SCAN ----------------
-
+      # ==================================================
+      # SECURITY SCANNING
+      # ==================================================
 
       - name: Trivy Scan Frontend
-
-
         uses: aquasecurity/trivy-action@master
-
-
         with:
-
-
           image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-
           format: table
-
           exit-code: 0
-
           severity: CRITICAL,HIGH
-
-
 
 
       - name: Trivy Scan API
-
-
         uses: aquasecurity/trivy-action@master
-
-
         with:
-
-
           image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-
           format: table
-
           exit-code: 0
-
           severity: CRITICAL,HIGH
 
 
-
-
-
-# ======================================================
-# DEPLOY TO AKS
-# ======================================================
-
+  # ======================================================
+  # DEPLOY TO DEV AKS
+  # ======================================================
 
   deploy-dev:
 
-
     name: Deploy To Dev AKS
-
 
     runs-on: ubuntu-latest
 
-
-    needs: build-and-push
-
+    needs:
+      - build-and-push
 
     environment: dev
 
-
-
     steps:
 
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
 
       - name: Checkout code
-
         uses: actions/checkout@v4
 
 
-
+      # --------------------------------------------------
+      # Azure Login
+      # --------------------------------------------------
 
       - name: Azure Login OIDC
-
         uses: azure/login@v2
-
-
         with:
-
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
-
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 
-
+      # --------------------------------------------------
+      # Get AKS Credentials
+      # --------------------------------------------------
 
       - name: Get AKS Credentials
-
+        shell: bash
         run: |
-
 
           az aks get-credentials \
-          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-          --name ${{ env.AKS_CLUSTER_NAME }} \
-          --overwrite-existing
+            --resource-group "${{ env.AKS_RESOURCE_GROUP }}" \
+            --name "${{ env.AKS_CLUSTER_NAME }}" \
+            --overwrite-existing
 
 
+      # --------------------------------------------------
+      # Verify AKS Connection
+      # --------------------------------------------------
 
+      - name: Verify AKS Connection
+        shell: bash
+        run: |
+
+          kubectl get nodes
+
+
+      # --------------------------------------------------
+      # Attach ACR To AKS
+      # --------------------------------------------------
 
       - name: Attach ACR To AKS
-
-
+        shell: bash
         run: |
-
 
           az aks update \
-          --name ${{ env.AKS_CLUSTER_NAME }} \
-          --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
-          --attach-acr ${{ env.ACR_NAME }}
+            --name "${{ env.AKS_CLUSTER_NAME }}" \
+            --resource-group "${{ env.AKS_RESOURCE_GROUP }}" \
+            --attach-acr "${{ env.ACR_NAME }}"
 
 
-
-
-
+      # --------------------------------------------------
+      # Create Namespace
+      # --------------------------------------------------
 
       - name: Create Namespace
-
-
+        shell: bash
         run: |
 
+          kubectl create namespace "${{ env.NAMESPACE }}" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
 
-          kubectl create namespace ${{ env.NAMESPACE }} \
-          --dry-run=client -o yaml | kubectl apply -f -
 
-
-
+      # --------------------------------------------------
+      # Create Application Secrets
+      # --------------------------------------------------
 
       - name: Create Secrets
-
-
+        shell: bash
         run: |
-
 
           kubectl create secret generic netflix-app-secrets \
-          --namespace=${{ env.NAMESPACE }} \
-          --from-literal=TMDB_API_KEY=${{ secrets.TMDB_API_KEY }} \
-          --dry-run=client -o yaml | kubectl apply -f -
+            --namespace="${{ env.NAMESPACE }}" \
+            --from-literal=TMDB_API_KEY="${{ secrets.TMDB_API_KEY }}" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
 
 
-
-
+      # --------------------------------------------------
+      # Apply ConfigMap
+      # --------------------------------------------------
 
       - name: Apply ConfigMap
-
-
+        shell: bash
         run: |
-
 
           kubectl apply \
-          -f k8s/base/configmap.yml \
-          -n ${{ env.NAMESPACE }}
+            -f k8s/base/configmap.yml \
+            -n "${{ env.NAMESPACE }}"
 
 
-
-
+      # ==================================================
+      # DEPLOY APPLICATION
+      # ==================================================
 
       - name: Deploy Application
-
-
+        shell: bash
         run: |
 
+          IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
 
-          IMAGE_TAG=${{ needs.build-and-push.outputs.image_tag }}
+          echo "Deploying image tag:"
+          echo "$IMAGE_TAG"
 
+          echo "ACR:"
+          echo "${{ env.ACR_LOGIN_SERVER }}"
 
 
           sed \
-          -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
-          -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
-          k8s/dev/deployment.yml | kubectl apply -f -
+            -e "s|__ACR_LOGIN_SERVER__|${{ env.ACR_LOGIN_SERVER }}|g" \
+            -e "s|__IMAGE_TAG__|${IMAGE_TAG}|g" \
+            k8s/dev/deployment.yml \
+            | kubectl apply -n "${{ env.NAMESPACE }}" -f -
 
 
+      # --------------------------------------------------
+      # Apply Services
+      # --------------------------------------------------
 
-          kubectl apply -f k8s/dev/service.yml
-
-          kubectl apply -f k8s/dev/ingress.yml
-
-          kubectl apply -f k8s/dev/hpa.yml
-
-
-
-
-
-
-      - name: Wait For Rollout
-
-
+      - name: Apply Services
+        shell: bash
         run: |
 
-
-          kubectl rollout status deployment/netflix-web \
-          -n ${{ env.NAMESPACE }} \
-          --timeout=600s
-
+          kubectl apply \
+            -f k8s/dev/service.yml \
+            -n "${{ env.NAMESPACE }}"
 
 
-          kubectl rollout status deployment/netflix-api \
-          -n ${{ env.NAMESPACE }} \
-          --timeout=600s
+      # --------------------------------------------------
+      # Apply Ingress
+      # --------------------------------------------------
+
+      - name: Apply Ingress
+        shell: bash
+        run: |
+
+          kubectl apply \
+            -f k8s/dev/ingress.yml \
+            -n "${{ env.NAMESPACE }}"
 
 
+      # --------------------------------------------------
+      # Apply HPA
+      # --------------------------------------------------
+
+      - name: Apply HPA
+        shell: bash
+        run: |
+
+          kubectl apply \
+            -f k8s/dev/hpa.yml \
+            -n "${{ env.NAMESPACE }}"
 
 
+      # ==================================================
+      # WAIT FOR ROLLOUT
+      # ==================================================
 
+      - name: Wait For Frontend Rollout
+        shell: bash
+        run: |
+
+          kubectl rollout status \
+            deployment/netflix-web \
+            -n "${{ env.NAMESPACE }}" \
+            --timeout=600s
+
+
+      - name: Wait For API Rollout
+        shell: bash
+        run: |
+
+          kubectl rollout status \
+            deployment/netflix-api \
+            -n "${{ env.NAMESPACE }}" \
+            --timeout=600s
+
+
+      # ==================================================
+      # VERIFY DEPLOYMENT
+      # ==================================================
 
       - name: Verify Deployment
-
-
+        shell: bash
         run: |
 
+          echo "======================================"
+          echo "PODS"
+          echo "======================================"
 
-          echo "==== PODS ===="
-
-          kubectl get pods -n ${{ env.NAMESPACE }}
-
-
-
-          echo "==== SERVICES ===="
-
-          kubectl get svc -n ${{ env.NAMESPACE }}
+          kubectl get pods \
+            -n "${{ env.NAMESPACE }}" \
+            -o wide
 
 
+          echo "======================================"
+          echo "SERVICES"
+          echo "======================================"
 
-          echo "==== INGRESS ===="
-
-          kubectl get ingress -n ${{ env.NAMESPACE }}
-
-
-
-
+          kubectl get svc \
+            -n "${{ env.NAMESPACE }}"
 
 
-# ======================================================
-# EMAIL NOTIFICATION
-# ======================================================
+          echo "======================================"
+          echo "INGRESS"
+          echo "======================================"
 
+          kubectl get ingress \
+            -n "${{ env.NAMESPACE }}"
+
+
+          echo "======================================"
+          echo "DEPLOYMENTS"
+          echo "======================================"
+
+          kubectl get deployments \
+            -n "${{ env.NAMESPACE }}"
+
+
+      # ==================================================
+      # SHOW DEPLOYED IMAGE
+      # ==================================================
+
+      - name: Show Deployed Images
+        shell: bash
+        run: |
+
+          echo "Frontend image:"
+          kubectl get deployment netflix-web \
+            -n "${{ env.NAMESPACE }}" \
+            -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+          echo ""
+
+          echo "API image:"
+          kubectl get deployment netflix-api \
+            -n "${{ env.NAMESPACE }}" \
+            -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+          echo ""
+
+
+  # ======================================================
+  # EMAIL NOTIFICATION
+  # ======================================================
 
   notify:
 
-
     name: Deployment Notification
-
 
     runs-on: ubuntu-latest
 
-
     needs:
-
       - build-and-push
-
       - deploy-dev
-
-
 
     if: success()
 
-
-
     steps:
 
-
       - name: Send Email
-
-
         uses: dawidd6/action-send-mail@v3
 
-
         with:
-
-
           server_address: smtp.gmail.com
-
           server_port: 465
 
-
           username: ${{ secrets.SMTP_USERNAME }}
-
           password: ${{ secrets.SMTP_PASSWORD }}
-
 
           subject: "Netflix Dev Deployment Successful"
 
-
           to: peacerotimi6@gmail.com
-
           from: peacerotimi6@gmail.com
-
-
 
           body: |
 
-
             Netflix Streaming App deployment completed successfully.
 
+            ==========================================
+            DEPLOYMENT INFORMATION
+            ==========================================
 
-            Images:
+            Image Tag:
+            ${{ needs.build-and-push.outputs.image_tag }}
 
-
-            Frontend:
+            ==========================================
+            FRONTEND IMAGE
+            ==========================================
 
             netflixappdevacr.azurecr.io/netflix-web:${{ needs.build-and-push.outputs.image_tag }}
 
-
-
-            API:
+            ==========================================
+            API IMAGE
+            ==========================================
 
             netflixappdevacr.azurecr.io/netflix-api:${{ needs.build-and-push.outputs.image_tag }}
 
-
+            ==========================================
+            AKS
+            ==========================================
 
             Cluster:
-
             netflix-app-dev-aks
 
-
+            Resource Group:
+            netflix-app-dev-rg
 
             Namespace:
-
             netflix-dev
+
+            ==========================================
+            STATUS
+            ==========================================
+
+            Deployment completed successfully.
