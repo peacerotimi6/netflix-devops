@@ -313,4 +313,3 @@ jobs:
           sarif_file: checkov-k8s.sarif
 
           category: checkov-kubernetes
-#

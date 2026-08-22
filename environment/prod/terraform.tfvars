@@ -1,14 +1,14 @@
 # Production Environment Configuration
 
 resource_group_name = "netflix-app-prod-rg"
-location            = "eastus"
+location            = "eastus2"
 
 acr_name            = "netflixappprodacruks"
 
 aks_cluster_name    = "netflix-app-prod-aks"
 dns_prefix          = "netflix-prod"
 
-kubernetes_version  = "1.36.2"
+kubernetes_version  = "1.36"
 
 key_vault_name      ="netflix-prod-kv-v3"
 
