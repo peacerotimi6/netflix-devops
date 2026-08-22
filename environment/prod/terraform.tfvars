@@ -24,7 +24,7 @@ vnet_address_space = "10.1.0.0/16"
 system_node_count   = 1
 system_node_vm_size = "Standard_D2as_v7"
 system_min_count    = 1
-system_max_count    = 3
+system_max_count    = 2
 
 
 # App node pool
@@ -32,4 +32,4 @@ system_max_count    = 3
 app_node_count   = 1
 app_node_vm_size = "Standard_D2as_v7"
 app_min_count    = 1
-app_max_count    = 3
+app_max_count    = 2
