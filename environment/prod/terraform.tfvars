@@ -10,7 +10,7 @@ dns_prefix          = "netflix-prod"
 
 kubernetes_version  = "1.36"
 
-key_vault_name      ="netflix-prod-kv-v3"
+key_vault_name      ="netflix-prod-kv-v4"
 
 
 # Networking
