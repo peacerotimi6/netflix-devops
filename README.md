@@ -481,7 +481,7 @@ kubectl apply -n argo-rollouts \
 
 # 9. Configure DNS (after terraform apply outputs Front Door endpoint hostname)
 #    adedayo.shop     → CNAME → <frontdoor_endpoint_hostname>
-#    www.adedayo.shop → CNAME → <frontdoor_endpoint_hostname>
+#    www.rotimi.shop → CNAME → <frontdoor_endpoint_hostname>
 #    _dnsauth.adedayo.shop     → TXT → <apex_domain_validation_token>
 #    _dnsauth.www.adedayo.shop → TXT → <www_domain_validation_token>
 

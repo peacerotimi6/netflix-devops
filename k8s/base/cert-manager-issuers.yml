@@ -23,7 +23,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            ingressClassName: nginx
+            ingressClassName: webapprouting.kubernetes.azure.com
             ingressTemplate:
               metadata:
                 annotations:
@@ -46,7 +46,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            ingressClassName: nginx
+            ingressClassName: webapprouting.kubernetes.azure.com
             ingressTemplate:
               metadata:
                 annotations:

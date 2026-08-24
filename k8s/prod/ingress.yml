@@ -15,7 +15,7 @@ metadata:
     nginx.ingress.kubernetes.io/rate-limit-window: "1m"
 
 spec:
-  ingressClassName: nginx
+  ingressClassName: webapprouting.kubernetes.azure.com
 
   tls:
     - hosts:
