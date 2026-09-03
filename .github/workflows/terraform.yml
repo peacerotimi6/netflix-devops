@@ -96,7 +96,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    needs: sonarcloud
+    needs: sonarcloudt 
 
 
     env:
