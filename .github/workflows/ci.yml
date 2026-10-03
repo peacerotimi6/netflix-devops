@@ -136,9 +136,10 @@ jobs:
         with:
           sarif_file: "trivy-image-results.sarif"
 
-  # -------------------------------------------------------
-  # Job 5: Checkov IaC Security Scan
-  # -------------------------------------------------------
+# -------------------------------------------------------
+# Job 5: Checkov Infrastructure Scan
+# -------------------------------------------------------
+
   checkov-scan:
     name: Checkov IaC Scan
     runs-on: ubuntu-latest
