@@ -42,7 +42,7 @@ ACR and Key Vault on **Private Endpoints**, and automated TLS via cert-manager. 
 - **NSG**: port 443 restricted to `AzureFrontDoor.Backend` service tag — prevents LB bypass
 - **OIDC/Workload Identity Federation** — no long-lived secrets stored anywhere
 - **Argo Rollouts Blue/Green** — zero-downtime releases with manual promotion gate and instant rollback
-- **cert-manager** + Let's Encrypt automatic TLS for `adedayo.shop` and `www.adedayo.shop`
+- **cert-manager** + Let's Encrypt automatic TLS for `rotimi.shop` and `www.rotimi.shop`
 - **Helm-managed monitoring** via `kube-prometheus-stack` on the App Node Pool
 
 ### Security
@@ -88,7 +88,7 @@ ACR and Key Vault on **Private Endpoints**, and automated TLS via cert-manager. 
 ```
 Users
   │
-  ├── DNS lookup → GoDaddy (adedayo.shop)
+  ├── DNS lookup → GoDaddy (rotimi.shop)
   │                  CNAME → Azure Front Door endpoint
   │
   ▼
@@ -268,7 +268,7 @@ netflix-streaming-webapp/
 
 | | Dev | Prod |
 |---|-----|------|
-| **Domain** | `dev.adedayo.shop` | `adedayo.shop` + `www.adedayo.shop` |
+| **Domain** | `dev.rotimi.shop` | `rotimi.shop` + `www.rotimi.shop` |
 | **DNS record** | A record → Ingress LB IP | CNAME → Azure Front Door endpoint |
 | **Edge / CDN** | None | Azure Front Door Standard |
 | **WAF** | None | Prevention Mode — DefaultRuleSet + BotManagerRuleSet |
@@ -480,10 +480,10 @@ kubectl apply -n argo-rollouts \
 #    GitHub → Actions → Deploy Monitoring Stack → dev
 
 # 9. Configure DNS (after terraform apply outputs Front Door endpoint hostname)
-#    adedayo.shop     → CNAME → <frontdoor_endpoint_hostname>
-#    www.adedayo.shop → CNAME → <frontdoor_endpoint_hostname>
-#    _dnsauth.adedayo.shop     → TXT → <apex_domain_validation_token>
-#    _dnsauth.www.adedayo.shop → TXT → <www_domain_validation_token>
+#    rotimi.shop     → CNAME → <frontdoor_endpoint_hostname>
+#    www.rotimi.shop → CNAME → <frontdoor_endpoint_hostname>
+#    _dnsauth.rotimi.shop     → TXT → <apex_domain_validation_token>
+#    _dnsauth.www.rotimi.shop → TXT → <www_domain_validation_token>
 
 # 10. Promote to prod
 #     GitHub → Actions → Deploy to Production → image_tag=<sha7> + confirm_deploy=deploy-prod
@@ -507,14 +507,6 @@ kubectl argo rollouts promote netflix-api -n netflix-prod
 | [.github/SECRETS_REQUIRED.md](.github/SECRETS_REQUIRED.md) | All required GitHub secrets with descriptions and OIDC setup instructions |
 
 ---
-
-## Screenshots
-
-
-<img width="797" height="434" alt="image" src="https://github.com/user-attachments/assets/05deef44-56ca-4921-9b90-49ba16280824" />
-
-
-<img width="814" height="454" alt="image" src="https://github.com/user-attachments/assets/5a145c84-0955-4f15-a831-fa84cdcc3584" />
 
 
 
